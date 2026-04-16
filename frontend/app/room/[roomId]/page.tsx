@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useParams } from "next/navigation";
 import { connectSocket } from "../../lib/socket";
 
 import EditorPanel from "./EditorPanel";
 import ChatPanel from "./ChatPanel";
+import toast from "react-hot-toast";
 
 type ChatMessage = {
   userId: string;
@@ -26,15 +27,16 @@ export default function RoomPage() {
   const [typingUsers, setTypingUsers] = useState<Set<string>>(new Set());
   const [userId, setUserId] = useState<string | null>(null);
   const [username, setUsername] = useState<string | null>(null);
+  const [output, setOutput] = useState(""); // ✅ NEW
 
-  // 🔥 SAVE LAST ROOM
+  const isRemote = useRef(false);
+
   useEffect(() => {
     if (roomIdStr) {
       localStorage.setItem("lastRoom", roomIdStr);
     }
   }, [roomIdStr]);
 
-  // ✅ GET USER FROM JWT
   useEffect(() => {
     const token = localStorage.getItem("token");
 
@@ -53,13 +55,12 @@ export default function RoomPage() {
     }
   }, []);
 
-  // ✅ SOCKET CONNECTION
   useEffect(() => {
     if (!roomIdStr || !userId) return;
 
     connectSocket(roomIdStr, {
       onCode: (data: any) => {
-        if (data.userId === userId) return;
+        isRemote.current = true;
 
         setCode((prev) => {
           if (data.code !== undefined && data.code !== prev) {
@@ -86,17 +87,21 @@ export default function RoomPage() {
       onLanguage: (data: any) => {
         console.log("Language:", data.language);
       },
+
+      // 🔥 NEW
+      onRun: (data: any) => {
+        setOutput(data.output);
+      },
     });
   }, [roomIdStr, userId]);
 
-  // ✅ FETCH ROOM DATA (FIXED ENV URL)
   useEffect(() => {
     if (!roomIdStr) return;
 
     const fetchRoom = async () => {
       try {
         const res = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/room/${roomIdStr}`, // ✅ FIXED
+          `${process.env.NEXT_PUBLIC_API_URL}/room/${roomIdStr}`,
         );
 
         if (!res.ok) return;
@@ -124,7 +129,6 @@ export default function RoomPage() {
 
   return (
     <div className="h-screen flex flex-col bg-gray-950 text-white">
-      {/* HEADER */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-gray-800 bg-gray-900">
         <div className="text-sm text-gray-300">
           Room: <span className="text-blue-400">{roomIdStr}</span>
@@ -133,7 +137,7 @@ export default function RoomPage() {
         <button
           onClick={() => {
             navigator.clipboard.writeText(window.location.href);
-            alert("🔗 Link copied!");
+            toast.success("🔗 Link copied!");
           }}
           className="text-xs bg-blue-600 hover:bg-blue-700 px-3 py-1 rounded"
         >
@@ -145,12 +149,7 @@ export default function RoomPage() {
             {username?.charAt(0).toUpperCase()}
           </div>
 
-          <span
-            className="text-gray-300 text-sm truncate"
-            title={username || ""}
-          >
-            {username}
-          </span>
+          <span className="text-gray-300 text-sm truncate">{username}</span>
         </div>
       </div>
 
@@ -162,6 +161,8 @@ export default function RoomPage() {
             code={code}
             setCode={setCode}
             typingUsers={typingUsers}
+            isRemote={isRemote}
+            output={output} // ✅ NEW
           />
         </div>
 

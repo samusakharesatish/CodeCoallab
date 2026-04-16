@@ -2,17 +2,11 @@
 
 import { useRef, useState } from "react";
 import dynamic from "next/dynamic";
-import { sendCode, sendTyping, sendLanguage } from "../../lib/socket";
+import { sendCode, sendTyping, sendLanguage, sendRun } from "../../lib/socket";
 
 const Editor = dynamic(() => import("@monaco-editor/react"), {
   ssr: false,
 });
-
-const languageMap: any = {
-  javascript: 63,
-  java: 62,
-  python: 71,
-};
 
 export default function EditorPanel({
   roomId,
@@ -20,10 +14,10 @@ export default function EditorPanel({
   code,
   setCode,
   typingUsers,
+  output,
 }: any) {
   const typingTimeout = useRef<NodeJS.Timeout | null>(null);
 
-  const [output, setOutput] = useState("");
   const [language, setLanguage] = useState("javascript");
   const [loading, setLoading] = useState(false);
 
@@ -33,44 +27,43 @@ export default function EditorPanel({
 
     setCode(newCode);
 
-    sendCode(roomId, { code: newCode, cursorPosition: 0, userId });
-
-    sendTyping(roomId, { userId, isTyping: true });
+    sendCode(newCode, roomId, 0);
+    sendTyping(roomId, userId, true);
 
     if (typingTimeout.current) clearTimeout(typingTimeout.current);
 
     typingTimeout.current = setTimeout(() => {
-      sendTyping(roomId, { userId, isTyping: false });
+      sendTyping(roomId, userId, false);
     }, 1000);
   };
 
-  const runCode = async () => {
+  // 🔥 REAL-TIME RUN
+  const runCode = () => {
     setLoading(true);
-    setOutput("Running...");
 
+    sendRun(roomId, {
+      code,
+      language,
+      userId,
+    });
+
+    setTimeout(() => setLoading(false), 1000);
+  };
+
+  // 🔥 NEW: FORMAT OUTPUT
+  const formatOutput = (raw: string) => {
     try {
-      const res = await fetch("http://localhost:8080/api/code/run", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          code,
-          language_id: languageMap[language],
-        }),
-      });
+      const parsed = JSON.parse(raw);
 
-      const data = await res.json();
-
-      setOutput(
-        data.stdout ||
-        data.stderr ||
-        data.compile_output ||
+      return (
+        parsed.stdout ||
+        parsed.stderr ||
+        parsed.compile_output ||
         "No output"
       );
     } catch {
-      setOutput("Error running code");
+      return raw;
     }
-
-    setLoading(false);
   };
 
   const activeTypingUsers = [...typingUsers].filter((u) => u !== userId);
@@ -78,7 +71,7 @@ export default function EditorPanel({
   return (
     <div className="flex-1 flex flex-col">
 
-      {/* 🔥 HEADER */}
+      {/* HEADER */}
       <div className="flex items-center justify-between px-4 py-2 bg-[#020617] border-b border-gray-800">
         <div className="flex items-center gap-3">
 
@@ -86,7 +79,12 @@ export default function EditorPanel({
             value={language}
             onChange={(e) => {
               setLanguage(e.target.value);
-              sendLanguage(roomId, { language: e.target.value, userId });
+
+              sendLanguage(roomId, {
+                roomId,
+                language: e.target.value,
+                userId,
+              });
             }}
             className="bg-gray-800 text-white text-sm px-2 py-1 rounded border border-gray-700"
           >
@@ -104,14 +102,14 @@ export default function EditorPanel({
         </div>
       </div>
 
-      {/* 🔥 TYPING */}
+      {/* TYPING */}
       {activeTypingUsers.length > 0 && (
         <div className="px-4 py-1 text-xs text-gray-400 bg-[#020617] border-b border-gray-800">
           {activeTypingUsers.join(", ")} typing...
         </div>
       )}
 
-      {/* 🔥 EDITOR */}
+      {/* EDITOR */}
       <div className="flex-1 border-b border-gray-800">
         <Editor
           height="100%"
@@ -122,23 +120,18 @@ export default function EditorPanel({
         />
       </div>
 
-      {/* 🔥 IMPROVED OUTPUT PANEL */}
+      {/* OUTPUT */}
       <div className="h-44 border-t border-gray-800 bg-black flex flex-col">
-
-        {/* HEADER */}
         <div className="flex items-center justify-between px-3 py-1 bg-[#020617] border-b border-gray-800 text-xs text-gray-400">
           <span>OUTPUT</span>
-
           <span className="text-green-500">
             {loading ? "Running..." : "Ready"}
           </span>
         </div>
 
-        {/* SCROLLABLE CONTENT */}
-        <div className="flex-1 overflow-y-auto p-3 text-green-400 text-sm font-mono whitespace-pre-wrap scroll-smooth">
-          {output || "No output yet..."}
+        <div className="flex-1 overflow-y-auto p-3 text-green-400 text-sm font-mono whitespace-pre-wrap">
+          {output ? formatOutput(output) : "No output yet..."}
         </div>
-
       </div>
     </div>
   );

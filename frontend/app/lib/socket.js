@@ -8,16 +8,10 @@ let messageQueue = [];
 export const getClient = () => stompClient;
 
 export const connectSocket = (roomId, handlers) => {
-  const token = localStorage.getItem("token"); // ✅ NEW
-
-  const socket = new SockJS("http://localhost:8080/ws");
+  const socket = new SockJS(`${process.env.NEXT_PUBLIC_API_URL}/ws`);
 
   stompClient = new Client({
     webSocketFactory: () => socket,
-
-    connectHeaders: {
-      Authorization: `Bearer ${token}`, // ✅ IMPORTANT
-    },
 
     onConnect: () => {
       console.log("Connected ✅");
@@ -25,8 +19,7 @@ export const connectSocket = (roomId, handlers) => {
 
       // ✅ CODE
       stompClient.subscribe(`/topic/code/${roomId}`, (message) => {
-        const data = JSON.parse(message.body);
-        handlers.onCode(data);
+        handlers.onCode(JSON.parse(message.body));
       });
 
       // ✅ TYPING
@@ -44,22 +37,26 @@ export const connectSocket = (roomId, handlers) => {
         handlers.onLanguage(JSON.parse(message.body));
       });
 
-      // ✅ send queued messages
+      // 🔥 NEW: RUN OUTPUT
+      stompClient.subscribe(`/topic/run/${roomId}`, (message) => {
+        handlers.onRun(JSON.parse(message.body));
+      });
+
+      // ✅ flush queue
       messageQueue.forEach((msg) => stompClient.publish(msg));
       messageQueue = [];
     },
 
     onStompError: (frame) => {
-      console.error("STOMP error:", frame);
+      console.error("STOMP error:", frame.headers["message"]);
+      console.error("Details:", frame.body);
     },
   });
 
   stompClient.activate();
 };
 
-//
-// ✅ SAFE PUBLISH HELPER
-//
+// ✅ SAFE PUBLISH
 const publishSafe = (message) => {
   if (!isConnected) {
     messageQueue.push(message);
@@ -68,60 +65,55 @@ const publishSafe = (message) => {
   stompClient.publish(message);
 };
 
-//
-// ✅ CODE (userId REMOVED 🔥)
-//
+// ✅ CODE
 export const sendCode = (code, roomId, cursorPosition) => {
-  const payload = {
-    roomId,
-    cursorPosition,
-    code: code ?? "",
-  };
-
   publishSafe({
     destination: "/app/code",
-    body: JSON.stringify(payload),
+    body: JSON.stringify({
+      roomId,
+      code,
+      cursorPosition,
+    }),
   });
 };
 
-//
-// ✅ TYPING (userId REMOVED)
-//
-export const sendTyping = (roomId, isTyping) => {
+// ✅ TYPING
+export const sendTyping = (roomId, userId, isTyping) => {
   publishSafe({
     destination: "/app/typing",
-    body: JSON.stringify({ roomId, isTyping }),
+    body: JSON.stringify({ roomId, userId, isTyping }),
   });
 };
 
-//
-// ✅ CHAT (userId REMOVED)
-//
+// ✅ CHAT
 export const sendChat = (roomId, payload) => {
-  const message = {
+  publishSafe({
     destination: "/app/chat",
     body: JSON.stringify({
       roomId,
       ...payload,
     }),
-  };
-
-  if (!isConnected) {
-    messageQueue.push(message);
-    return;
-  }
-
-  stompClient.publish({
-    destination: message.destination,
-    body: message.body,
   });
 };
-//
+
 // ✅ LANGUAGE
-//
-export const sendLanguage = (roomId, language) => {
+export const sendLanguage = (roomId, payload) => {
   publishSafe({
     destination: "/app/language",
-    body: JSON.stringify({ roomId, language }),
+    body: JSON.stringify({
+      roomId,
+      ...payload,
+    }),
+  });
+};
+
+// 🔥 NEW: RUN
+export const sendRun = (roomId, payload) => {
+  publishSafe({
+    destination: "/app/run",
+    body: JSON.stringify({
+      roomId,
+      ...payload,
+    }),
   });
 };

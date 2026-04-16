@@ -16,9 +16,10 @@ public class SecurityConfig {
             .cors(cors -> {})
 
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/auth/**").permitAll()   // ✅ login/register
-                .requestMatchers("/room/**").permitAll()   // 🔥 FIXED (IMPORTANT)
+                .requestMatchers("/auth/**").permitAll()
+                .requestMatchers("/room/**").permitAll()
                 .requestMatchers("/ws/**").permitAll()
+                .requestMatchers("/api/code/run").permitAll() // ✅ ADD THIS LINE
                 .anyRequest().authenticated()
             )
 
