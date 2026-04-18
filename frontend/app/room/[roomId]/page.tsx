@@ -27,7 +27,7 @@ export default function RoomPage() {
   const [typingUsers, setTypingUsers] = useState<Set<string>>(new Set());
   const [userId, setUserId] = useState<string | null>(null);
   const [username, setUsername] = useState<string | null>(null);
-  const [output, setOutput] = useState(""); // ✅ NEW
+  const [output, setOutput] = useState("");
 
   const isRemote = useRef(false);
 
@@ -60,6 +60,10 @@ export default function RoomPage() {
 
     connectSocket(roomIdStr, {
       onCode: (data: any) => {
+        // ✅ FIX 1: Ignore messages sent by yourself to stop the "Echo Loop"
+        if (data.userId === userId) return;
+
+        // ✅ FIX 2: Set isRemote to true BEFORE updating state
         isRemote.current = true;
 
         setCode((prev) => {
@@ -88,7 +92,6 @@ export default function RoomPage() {
         console.log("Language:", data.language);
       },
 
-      // 🔥 NEW
       onRun: (data: any) => {
         setOutput(data.output);
       },
@@ -101,7 +104,7 @@ export default function RoomPage() {
     const fetchRoom = async () => {
       try {
         const res = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/room/${roomIdStr}`,
+          `${process.env.NEXT_PUBLIC_API_URL}/room/${roomIdStr}`
         );
 
         if (!res.ok) return;
@@ -129,30 +132,55 @@ export default function RoomPage() {
 
   return (
     <div className="h-screen flex flex-col bg-gray-950 text-white">
-      <div className="flex items-center justify-between px-4 py-2 border-b border-gray-800 bg-gray-900">
-        <div className="text-sm text-gray-300">
-          Room: <span className="text-blue-400">{roomIdStr}</span>
+      {/* 🔥 WHITE HEADER */}
+      <div className="flex items-center justify-between px-5 py-3 bg-white border-b border-gray-200 shadow-sm">
+        {/* LEFT */}
+        <div className="flex items-center gap-3">
+          {/* Icon */}
+          <div className="w-10 h-10 flex items-center justify-center rounded-xl bg-indigo-100">
+            <span className="text-indigo-600 text-lg font-bold">{`</>`}</span>
+          </div>
+
+          {/* Room Info */}
+          <div className="flex items-center gap-2">
+            <span className="text-gray-600 text-sm font-medium">Room</span>
+            <span className="px-3 py-1 text-sm rounded-full bg-indigo-50 text-indigo-600 font-semibold">
+              {roomIdStr}
+            </span>
+
+            {/* Online */}
+            <span className="flex items-center gap-1 px-2 py-1 text-xs rounded-full bg-green-100 text-green-600 font-medium">
+              <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+              2 online
+            </span>
+          </div>
         </div>
 
+        {/* CENTER */}
         <button
           onClick={() => {
             navigator.clipboard.writeText(window.location.href);
             toast.success("🔗 Link copied!");
           }}
-          className="text-xs bg-blue-600 hover:bg-blue-700 px-3 py-1 rounded"
+          className="flex items-center gap-2 px-4 py-2 text-sm rounded-xl bg-indigo-500 text-white hover:bg-indigo-600 transition shadow-sm"
         >
-          Copy Link
+          📋 Copy Link
         </button>
 
-        <div className="flex items-center gap-2 max-w-[180px]">
-          <div className="w-8 h-8 flex items-center justify-center rounded-full bg-green-600 text-white text-xs font-bold">
-            {username?.charAt(0).toUpperCase()}
+        {/* RIGHT */}
+        <div className="flex items-center gap-3">
+          <div className="text-right hidden sm:block">
+            <p className="text-sm text-gray-900 font-semibold">{username}</p>
+            <p className="text-xs text-gray-500">Owner</p>
           </div>
 
-          <span className="text-gray-300 text-sm truncate">{username}</span>
+          <div className="w-10 h-10 flex items-center justify-center rounded-full bg-green-500 text-white font-semibold shadow-sm">
+            {username?.charAt(0).toUpperCase()}
+          </div>
         </div>
       </div>
 
+      {/* MAIN CONTENT */}
       <div className="flex flex-1 overflow-hidden">
         <div className="flex-1 flex flex-col">
           <EditorPanel
@@ -162,7 +190,7 @@ export default function RoomPage() {
             setCode={setCode}
             typingUsers={typingUsers}
             isRemote={isRemote}
-            output={output} // ✅ NEW
+            output={output}
           />
         </div>
 

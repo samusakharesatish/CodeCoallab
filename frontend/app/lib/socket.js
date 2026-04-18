@@ -1,3 +1,5 @@
+"use client";
+
 import SockJS from "sockjs-client";
 import { Client } from "@stomp/stompjs";
 
@@ -18,27 +20,35 @@ export const connectSocket = (roomId, handlers) => {
       isConnected = true;
 
       // ✅ CODE
-      stompClient.subscribe(`/topic/code/${roomId}`, (message) => {
-        handlers.onCode(JSON.parse(message.body));
-      });
+      // lib/socket.js - Inside connectSocket
+stompClient.subscribe(`/topic/code/${roomId}`, (message) => {
+  const data = JSON.parse(message.body);
+  if (!handlers?.onCode) return;
+  // Pass the whole data object so we can check the userId
+  handlers.onCode(data); 
+});
 
       // ✅ TYPING
       stompClient.subscribe(`/topic/typing/${roomId}`, (message) => {
+        if (!handlers?.onTyping) return;
         handlers.onTyping(JSON.parse(message.body));
       });
 
       // ✅ CHAT
       stompClient.subscribe(`/topic/chat/${roomId}`, (message) => {
+        if (!handlers?.onChat) return;
         handlers.onChat(JSON.parse(message.body));
       });
 
       // ✅ LANGUAGE
       stompClient.subscribe(`/topic/language/${roomId}`, (message) => {
+        if (!handlers?.onLanguage) return;
         handlers.onLanguage(JSON.parse(message.body));
       });
 
-      // 🔥 NEW: RUN OUTPUT
+      // ✅ RUN OUTPUT
       stompClient.subscribe(`/topic/run/${roomId}`, (message) => {
+        if (!handlers?.onRun) return;
         handlers.onRun(JSON.parse(message.body));
       });
 
@@ -56,28 +66,27 @@ export const connectSocket = (roomId, handlers) => {
   stompClient.activate();
 };
 
-// ✅ SAFE PUBLISH
 const publishSafe = (message) => {
-  if (!isConnected) {
+  if (!isConnected || !stompClient) {
     messageQueue.push(message);
     return;
   }
   stompClient.publish(message);
 };
 
-// ✅ CODE
-export const sendCode = (code, roomId, cursorPosition) => {
+// ✅ SEND CODE
+export const sendCode = (code, roomId, userId) => {
   publishSafe({
     destination: "/app/code",
     body: JSON.stringify({
       roomId,
       code,
-      cursorPosition,
+      userId,
     }),
   });
 };
 
-// ✅ TYPING
+// ✅ SEND TYPING
 export const sendTyping = (roomId, userId, isTyping) => {
   publishSafe({
     destination: "/app/typing",
@@ -85,7 +94,7 @@ export const sendTyping = (roomId, userId, isTyping) => {
   });
 };
 
-// ✅ CHAT
+// ✅ SEND CHAT
 export const sendChat = (roomId, payload) => {
   publishSafe({
     destination: "/app/chat",
@@ -96,7 +105,7 @@ export const sendChat = (roomId, payload) => {
   });
 };
 
-// ✅ LANGUAGE
+// ✅ SEND LANGUAGE
 export const sendLanguage = (roomId, payload) => {
   publishSafe({
     destination: "/app/language",
@@ -107,7 +116,7 @@ export const sendLanguage = (roomId, payload) => {
   });
 };
 
-// 🔥 NEW: RUN
+// ✅ SEND RUN
 export const sendRun = (roomId, payload) => {
   publishSafe({
     destination: "/app/run",
