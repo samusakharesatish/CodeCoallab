@@ -19,19 +19,35 @@ export const connectSocket = (roomId, handlers) => {
       console.log("Connected ✅");
       isConnected = true;
 
+      // 🔥 JOIN (PRODUCTION FIX)
+      if (handlers?.userId && handlers?.sessionId) {
+        stompClient.publish({
+          destination: "/app/join",
+          body: JSON.stringify({
+            roomId,
+            userId: handlers.userId,       // real user
+            sessionId: handlers.sessionId // unique tab
+          }),
+        });
+      }
+
       // ✅ CODE
-      // lib/socket.js - Inside connectSocket
-stompClient.subscribe(`/topic/code/${roomId}`, (message) => {
-  const data = JSON.parse(message.body);
-  if (!handlers?.onCode) return;
-  // Pass the whole data object so we can check the userId
-  handlers.onCode(data); 
-});
+      stompClient.subscribe(`/topic/code/${roomId}`, (message) => {
+        const data = JSON.parse(message.body);
+        if (!handlers?.onCode) return;
+        handlers.onCode(data);
+      });
 
       // ✅ TYPING
       stompClient.subscribe(`/topic/typing/${roomId}`, (message) => {
         if (!handlers?.onTyping) return;
         handlers.onTyping(JSON.parse(message.body));
+      });
+
+      // ✅ USERS
+      stompClient.subscribe(`/topic/users/${roomId}`, (message) => {
+        if (!handlers?.onUsers) return;
+        handlers.onUsers(JSON.parse(message.body));
       });
 
       // ✅ CHAT
@@ -78,11 +94,7 @@ const publishSafe = (message) => {
 export const sendCode = (code, roomId, userId) => {
   publishSafe({
     destination: "/app/code",
-    body: JSON.stringify({
-      roomId,
-      code,
-      userId,
-    }),
+    body: JSON.stringify({ roomId, code, userId }),
   });
 };
 
@@ -98,10 +110,7 @@ export const sendTyping = (roomId, userId, isTyping) => {
 export const sendChat = (roomId, payload) => {
   publishSafe({
     destination: "/app/chat",
-    body: JSON.stringify({
-      roomId,
-      ...payload,
-    }),
+    body: JSON.stringify({ roomId, ...payload }),
   });
 };
 
@@ -109,10 +118,7 @@ export const sendChat = (roomId, payload) => {
 export const sendLanguage = (roomId, payload) => {
   publishSafe({
     destination: "/app/language",
-    body: JSON.stringify({
-      roomId,
-      ...payload,
-    }),
+    body: JSON.stringify({ roomId, ...payload }),
   });
 };
 
@@ -120,9 +126,6 @@ export const sendLanguage = (roomId, payload) => {
 export const sendRun = (roomId, payload) => {
   publishSafe({
     destination: "/app/run",
-    body: JSON.stringify({
-      roomId,
-      ...payload,
-    }),
+    body: JSON.stringify({ roomId, ...payload }),
   });
 };

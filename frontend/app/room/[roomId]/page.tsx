@@ -31,6 +31,22 @@ export default function RoomPage() {
 
   const isRemote = useRef(false);
 
+  // 🔥 NEW: session id (per tab)
+  const [sessionId, setSessionId] = useState("");
+
+  const [onlineUsers, setOnlineUsers] = useState<string[]>([]);
+
+  useEffect(() => {
+    let session = sessionStorage.getItem("sessionId");
+
+    if (!session) {
+      session = Math.random().toString(36).substring(2, 8);
+      sessionStorage.setItem("sessionId", session);
+    }
+
+    setSessionId(session);
+  }, []);
+
   useEffect(() => {
     if (roomIdStr) {
       localStorage.setItem("lastRoom", roomIdStr);
@@ -56,14 +72,15 @@ export default function RoomPage() {
   }, []);
 
   useEffect(() => {
-    if (!roomIdStr || !userId) return;
+    if (!roomIdStr || !userId || !sessionId) return;
 
     connectSocket(roomIdStr, {
+      userId,
+      sessionId, // 🔥 IMPORTANT
+
       onCode: (data: any) => {
-        // ✅ FIX 1: Ignore messages sent by yourself to stop the "Echo Loop"
         if (data.userId === userId) return;
 
-        // ✅ FIX 2: Set isRemote to true BEFORE updating state
         isRemote.current = true;
 
         setCode((prev) => {
@@ -95,8 +112,14 @@ export default function RoomPage() {
       onRun: (data: any) => {
         setOutput(data.output);
       },
+
+      onUsers: (data: string[]) => {
+        setOnlineUsers([...data]); // ✅ force new reference
+      },
     });
-  }, [roomIdStr, userId]);
+  }, [roomIdStr, userId, sessionId]);
+
+  // rest remains SAME (no change)
 
   useEffect(() => {
     if (!roomIdStr) return;
@@ -104,7 +127,7 @@ export default function RoomPage() {
     const fetchRoom = async () => {
       try {
         const res = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/room/${roomIdStr}`
+          `${process.env.NEXT_PUBLIC_API_URL}/room/${roomIdStr}`,
         );
 
         if (!res.ok) return;
@@ -132,31 +155,26 @@ export default function RoomPage() {
 
   return (
     <div className="h-screen flex flex-col bg-gray-950 text-white">
-      {/* 🔥 WHITE HEADER */}
+      {/* HEADER */}
       <div className="flex items-center justify-between px-5 py-3 bg-white border-b border-gray-200 shadow-sm">
-        {/* LEFT */}
         <div className="flex items-center gap-3">
-          {/* Icon */}
           <div className="w-10 h-10 flex items-center justify-center rounded-xl bg-indigo-100">
             <span className="text-indigo-600 text-lg font-bold">{`</>`}</span>
           </div>
 
-          {/* Room Info */}
           <div className="flex items-center gap-2">
             <span className="text-gray-600 text-sm font-medium">Room</span>
             <span className="px-3 py-1 text-sm rounded-full bg-indigo-50 text-indigo-600 font-semibold">
               {roomIdStr}
             </span>
 
-            {/* Online */}
             <span className="flex items-center gap-1 px-2 py-1 text-xs rounded-full bg-green-100 text-green-600 font-medium">
               <span className="w-2 h-2 bg-green-500 rounded-full"></span>
-              2 online
+              {onlineUsers.length > 0 ? onlineUsers.length : 1} online
             </span>
           </div>
         </div>
 
-        {/* CENTER */}
         <button
           onClick={() => {
             navigator.clipboard.writeText(window.location.href);
@@ -167,11 +185,9 @@ export default function RoomPage() {
           📋 Copy Link
         </button>
 
-        {/* RIGHT */}
         <div className="flex items-center gap-3">
           <div className="text-right hidden sm:block">
             <p className="text-sm text-gray-900 font-semibold">{username}</p>
-            <p className="text-xs text-gray-500">Owner</p>
           </div>
 
           <div className="w-10 h-10 flex items-center justify-center rounded-full bg-green-500 text-white font-semibold shadow-sm">
@@ -180,7 +196,6 @@ export default function RoomPage() {
         </div>
       </div>
 
-      {/* MAIN CONTENT */}
       <div className="flex flex-1 overflow-hidden">
         <div className="flex-1 flex flex-col">
           <EditorPanel
