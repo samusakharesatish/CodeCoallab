@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
-import { connectSocket } from "../../lib/socket";
-
-import EditorPanel from "./EditorPanel";
-import ChatPanel from "./ChatPanel";
 import toast from "react-hot-toast";
+
+import ChatPanel from "./ChatPanel";
+import EditorPanel from "./EditorPanel";
+import WhiteboardCanvas from "./WhiteboardCanvas";
+import { connectSocket, sendView } from "../../lib/socket";
 
 type ChatMessage = {
   userId: string;
@@ -14,13 +15,40 @@ type ChatMessage = {
   timestamp: string;
 };
 
+type RoomView = "editor" | "whiteboard";
+
+type ViewSyncPayload = {
+  roomId: string;
+  view: RoomView;
+  ts: number;
+};
+
+type DrawEventPayload = {
+  userId?: string;
+};
+
+type CodeEventPayload = {
+  userId?: string;
+  code?: string;
+};
+
+type TypingEventPayload = {
+  userId: string;
+  isTyping: boolean;
+};
+
+type LanguageEventPayload = {
+  language?: string;
+};
+
+type RunEventPayload = {
+  output?: string;
+};
+
 export default function RoomPage() {
   const params = useParams();
   const roomId = params?.roomId;
-
-  if (!roomId) return null;
-
-  const roomIdStr = roomId as string;
+  const roomIdStr = typeof roomId === "string" ? roomId : "";
 
   const [code, setCode] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -28,13 +56,11 @@ export default function RoomPage() {
   const [userId, setUserId] = useState<string | null>(null);
   const [username, setUsername] = useState<string | null>(null);
   const [output, setOutput] = useState("");
+  const [sessionId, setSessionId] = useState("");
+  const [onlineUsers, setOnlineUsers] = useState<string[]>([]);
+  const [view, setView] = useState<RoomView>("editor");
 
   const isRemote = useRef(false);
-
-  // 🔥 NEW: session id (per tab)
-  const [sessionId, setSessionId] = useState("");
-
-  const [onlineUsers, setOnlineUsers] = useState<string[]>([]);
 
   useEffect(() => {
     let session = sessionStorage.getItem("sessionId");
@@ -76,9 +102,13 @@ export default function RoomPage() {
 
     connectSocket(roomIdStr, {
       userId,
-      sessionId, // 🔥 IMPORTANT
+      sessionId,
 
-      onCode: (data: any) => {
+      onDraw: (data: DrawEventPayload) => {
+        window.dispatchEvent(new CustomEvent("draw-event", { detail: data }));
+      },
+
+      onCode: (data: CodeEventPayload) => {
         if (data.userId === userId) return;
 
         isRemote.current = true;
@@ -91,12 +121,14 @@ export default function RoomPage() {
         });
       },
 
-      onTyping: (data: any) => {
+      onTyping: (data: TypingEventPayload) => {
         setTypingUsers((prev) => {
           const updated = new Set(prev);
-          data.isTyping
-            ? updated.add(data.userId)
-            : updated.delete(data.userId);
+          if (data.isTyping) {
+            updated.add(data.userId);
+          } else {
+            updated.delete(data.userId);
+          }
           return updated;
         });
       },
@@ -105,21 +137,24 @@ export default function RoomPage() {
         setMessages((prev) => [...prev, data]);
       },
 
-      onLanguage: (data: any) => {
+      onLanguage: (data: LanguageEventPayload) => {
         console.log("Language:", data.language);
       },
 
-      onRun: (data: any) => {
-        setOutput(data.output);
+      onRun: (data: RunEventPayload) => {
+        setOutput(data.output ?? "");
       },
 
       onUsers: (data: string[]) => {
-        setOnlineUsers([...data]); // ✅ force new reference
+        setOnlineUsers([...data]);
+      },
+
+      onView: (data: ViewSyncPayload) => {
+        if (data.roomId !== roomIdStr) return;
+        setView(data.view);
       },
     });
-  }, [roomIdStr, userId, sessionId]);
-
-  // rest remains SAME (no change)
+  }, [roomIdStr, sessionId, userId]);
 
   useEffect(() => {
     if (!roomIdStr) return;
@@ -151,11 +186,10 @@ export default function RoomPage() {
     fetchRoom();
   }, [roomIdStr]);
 
-  if (!userId) return null;
+  if (!roomIdStr || !userId) return null;
 
   return (
     <div className="h-screen flex flex-col bg-gray-950 text-white">
-      {/* HEADER */}
       <div className="flex items-center justify-between px-5 py-3 bg-white border-b border-gray-200 shadow-sm">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 flex items-center justify-center rounded-xl bg-indigo-100">
@@ -175,21 +209,48 @@ export default function RoomPage() {
           </div>
         </div>
 
-        <button
-          onClick={() => {
-            navigator.clipboard.writeText(window.location.href);
-            toast.success("🔗 Link copied!");
-          }}
-          className="flex items-center gap-2 px-4 py-2 text-sm rounded-xl bg-indigo-500 text-white hover:bg-indigo-600 transition shadow-sm"
-        >
-          📋 Copy Link
-        </button>
+        <div className="flex items-center gap-4">
+          {/* COPY BUTTON */}
+          <button
+            onClick={() => {
+              navigator.clipboard.writeText(window.location.href);
+              toast.success("🔗 Link copied!");
+            }}
+            className="flex items-center gap-1 px-2 py-1 text-xs rounded-md 
+               bg-indigo-700 text-white hover:bg-indigo-600 
+               transition shadow-sm"
+          >
+            📋 Copy
+          </button>
 
-        <div className="flex items-center gap-3">
-          <div className="text-right hidden sm:block">
+          {/* WHITEBOARD BUTTON */}
+          <button
+            onClick={() => {
+              const newView: RoomView =
+                view === "editor" ? "whiteboard" : "editor";
+
+              const payload: ViewSyncPayload = {
+                roomId: roomIdStr,
+                view: newView,
+                ts: Date.now(),
+              };
+
+              setView(newView);
+              sendView(roomIdStr, payload);
+            }}
+            className="flex items-center gap-1 px-2 py-1 text-xs rounded-md 
+               bg-indigo-700 text-white hover:bg-indigo-600 
+               transition shadow-sm"
+          >
+            {view === "editor" ? "🖊 WB" : "💻 Code"}
+          </button>
+
+          {/* USER NAME */}
+          <div className="text-right hidden sm:block ml-12">
             <p className="text-sm text-gray-900 font-semibold">{username}</p>
           </div>
 
+          {/* AVATAR */}
           <div className="w-10 h-10 flex items-center justify-center rounded-full bg-green-500 text-white font-semibold shadow-sm">
             {username?.charAt(0).toUpperCase()}
           </div>
@@ -198,15 +259,24 @@ export default function RoomPage() {
 
       <div className="flex flex-1 overflow-hidden">
         <div className="flex-1 flex flex-col">
-          <EditorPanel
-            roomId={roomIdStr}
-            userId={userId}
-            code={code}
-            setCode={setCode}
-            typingUsers={typingUsers}
-            isRemote={isRemote}
-            output={output}
-          />
+          {view === "editor" ? (
+            <EditorPanel
+              key="editor"
+              roomId={roomIdStr}
+              userId={userId}
+              code={code}
+              setCode={setCode}
+              typingUsers={typingUsers}
+              isRemote={isRemote}
+              output={output}
+            />
+          ) : (
+            <WhiteboardCanvas
+              key="whiteboard"
+              roomId={roomIdStr}
+              userId={userId}
+            />
+          )}
         </div>
 
         <div className="w-[320px] border-l border-gray-800 bg-gray-900 flex flex-col">

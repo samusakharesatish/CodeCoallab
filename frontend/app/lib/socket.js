@@ -25,8 +25,8 @@ export const connectSocket = (roomId, handlers) => {
           destination: "/app/join",
           body: JSON.stringify({
             roomId,
-            userId: handlers.userId,       // real user
-            sessionId: handlers.sessionId // unique tab
+            userId: handlers.userId, // real user
+            sessionId: handlers.sessionId, // unique tab
           }),
         });
       }
@@ -60,6 +60,18 @@ export const connectSocket = (roomId, handlers) => {
       stompClient.subscribe(`/topic/language/${roomId}`, (message) => {
         if (!handlers?.onLanguage) return;
         handlers.onLanguage(JSON.parse(message.body));
+      });
+
+      // ✅ DRAW (ADD THIS)
+      stompClient.subscribe(`/topic/draw`, (message) => {
+        if (!handlers?.onDraw) return;
+        handlers.onDraw(JSON.parse(message.body));
+      });
+
+      // ✅ VIEW SYNC
+      stompClient.subscribe(`/topic/view`, (message) => {
+        if (!handlers?.onView) return;
+        handlers.onView(JSON.parse(message.body));
       });
 
       // ✅ RUN OUTPUT
@@ -127,5 +139,31 @@ export const sendRun = (roomId, payload) => {
   publishSafe({
     destination: "/app/run",
     body: JSON.stringify({ roomId, ...payload }),
+  });
+};
+
+// 🔥 DRAW EVENTS (STOMP VERSION)
+
+// send draw
+export const sendDraw = (roomId, data) => {
+  publishSafe({
+    destination: "/app/draw",
+    body: JSON.stringify({ roomId, ...data }),
+  });
+};
+
+export const sendView = (roomId, data) => {
+  publishSafe({
+    destination: "/app/view",
+    body: JSON.stringify({ roomId, ...data }),
+  });
+};
+
+// listen draw
+export const onDraw = (roomId, callback) => {
+  if (!stompClient) return;
+
+  stompClient.subscribe(`/topic/draw/${roomId}`, (message) => {
+    callback(JSON.parse(message.body));
   });
 };

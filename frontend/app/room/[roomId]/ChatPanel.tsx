@@ -25,7 +25,7 @@ export default function ChatPanel({
   return (
     <div className="h-full flex flex-col bg-white">
       {/* HEADER */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-white">
+     <div className="h-[56px] flex items-center justify-between px-4 border-b border-gray-200 bg-white">
         <div className="flex items-center gap-2 text-gray-700 font-medium">
           💬 Chat
         </div>

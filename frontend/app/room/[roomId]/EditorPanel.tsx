@@ -116,7 +116,7 @@ export default function EditorPanel({
   return (
     <div className="flex-1 flex flex-col bg-white">
       {/* HEADER */}
-      <div className="flex items-center justify-between px-4 py-3 bg-white border-b border-gray-200">
+      <div className="h-[56px] flex items-center justify-between px-4 bg-white border-b border-gray-200">
         <div className="flex items-center gap-3">
           <select
             value={language}
