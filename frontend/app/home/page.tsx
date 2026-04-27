@@ -29,29 +29,22 @@ export default function HomePage() {
     }
   }, []);
 
-  // ✅ LOAD LAST ROOM
-useEffect(() => {
-  const syncRoom = () => {
-    const saved = localStorage.getItem("lastRoom");
-    if (saved) {
-      setLastRoom(saved);
-    }
+  useEffect(() => {
+    const syncRoom = () => {
+      const saved = localStorage.getItem("lastRoom");
+      if (saved) setLastRoom(saved);
+    };
+
+    syncRoom();
+    window.addEventListener("focus", syncRoom);
+    return () => window.removeEventListener("focus", syncRoom);
+  }, []);
+
+  const goToRoom = (room: string) => {
+    localStorage.setItem("lastRoom", room);
+    setLastRoom(room);
+    window.location.href = `/room/${room}`;
   };
-
-  syncRoom();
-
-  // 🔥 ensure updates reflect even after navigation
-  window.addEventListener("focus", syncRoom);
-
-  return () => window.removeEventListener("focus", syncRoom);
-}, []);
-
-  // 🔥 FIXED HERE
-const goToRoom = (room: string) => {
-  localStorage.setItem("lastRoom", room);
-  setLastRoom(room); // 🔥 IMPORTANT (UI update immediately)
-  window.location.href = `/room/${room}`;
-};
 
   const isValidRoomId = (id: string) => {
     return /^[a-zA-Z0-9_-]+$/.test(id);
@@ -151,70 +144,93 @@ const goToRoom = (room: string) => {
   if (!isLoggedIn) return null;
 
   return (
-    <div className="h-screen flex items-center justify-center bg-gray-950 text-white relative">
+    <div className="min-h-screen bg-white text-gray-900 flex flex-col">
 
-      <button
-        onClick={handleLogout}
-        className="absolute top-5 right-5 text-xs bg-red-600 hover:bg-red-700 px-3 py-1 rounded transition"
-      >
-        Logout
-      </button>
+      {/* HEADER */}
+      <div className="flex justify-between items-center px-8 py-4 border-b bg-white/80 backdrop-blur">
+        <h1 className="text-xl font-bold">CodeCollab 🔥</h1>
 
-      <div className="bg-gray-900 p-6 rounded-lg shadow-md space-y-4 w-80">
-
-        <h1 className="text-2xl font-bold text-center">
-          CodeCollab 🔥
-        </h1>
-
-        <p className="text-sm text-center text-green-400">
-          👤 {userEmail}
-        </p>
-
-        <div className="flex gap-2">
-          <input
-            type="text"
-            placeholder="Enter Room ID"
-            value={roomId}
-            onChange={(e) => setRoomId(e.target.value)}
-            className="w-full p-2 rounded bg-gray-800 border border-gray-700 focus:ring-2 focus:ring-blue-500 outline-none"
-          />
+        <div className="flex items-center gap-4">
+          <span className="text-sm text-gray-600">👤 {userEmail}</span>
 
           <button
-            onClick={generateRoomId}
-            className="px-3 bg-purple-600 hover:bg-purple-700 rounded transition hover:scale-105"
+            onClick={handleLogout}
+            className="px-4 py-1.5 text-sm bg-red-500 text-white rounded-lg hover:bg-red-600 transition"
           >
-            🎲
+            Logout
           </button>
         </div>
-
-        <div className="flex gap-3">
-          <button
-            onClick={joinRoom}
-            disabled={loading}
-            className="flex-1 py-2 bg-blue-600 rounded hover:scale-105 transition"
-          >
-            Join
-          </button>
-
-          <button
-            onClick={createRoom}
-            disabled={loading}
-            className="flex-1 py-2 bg-green-600 rounded hover:scale-105 transition"
-          >
-            Create
-          </button>
-        </div>
-
-        {lastRoom && (
-          <button
-            onClick={() => goToRoom(lastRoom)}
-            className="w-full py-2 bg-purple-600 hover:bg-purple-700 rounded transition"
-          >
-            Rejoin Last Room 🔁 ({lastRoom})
-          </button>
-        )}
-
       </div>
+
+      {/* MAIN */}
+      <div className="flex flex-1 items-center justify-center px-6">
+
+        <div className="w-full max-w-md bg-white border rounded-2xl shadow-xl p-8 space-y-6">
+
+          <div className="text-center">
+            <h2 className="text-2xl font-bold mb-2">
+              Join or Create Room
+            </h2>
+            <p className="text-gray-500 text-sm">
+              Start collaborating in real-time with your team
+            </p>
+          </div>
+
+          {/* INPUT */}
+          <div className="flex gap-2">
+            <input
+              type="text"
+              placeholder="Enter Room ID"
+              value={roomId}
+              onChange={(e) => setRoomId(e.target.value)}
+              className="w-full p-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-black outline-none"
+            />
+
+            <button
+              onClick={generateRoomId}
+              className="px-4 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition"
+            >
+              🎲
+            </button>
+          </div>
+
+          {/* ACTION BUTTONS */}
+          <div className="flex gap-3">
+            <button
+              onClick={joinRoom}
+              disabled={loading}
+              className="flex-1 py-3 bg-black text-white rounded-lg hover:scale-105 transition"
+            >
+              Join
+            </button>
+
+            <button
+              onClick={createRoom}
+              disabled={loading}
+              className="flex-1 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 hover:scale-105 transition"
+            >
+              Create
+            </button>
+          </div>
+
+          {/* LAST ROOM */}
+          {lastRoom && (
+            <button
+              onClick={() => goToRoom(lastRoom)}
+              className="w-full py-3 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 transition"
+            >
+              🔁 Rejoin Last Room ({lastRoom})
+            </button>
+          )}
+
+        </div>
+      </div>
+
+      {/* FOOTER */}
+      <div className="text-center py-4 text-gray-400 text-sm">
+        Real-time collaboration made simple 🚀
+      </div>
+
     </div>
   );
 }
