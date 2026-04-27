@@ -28,12 +28,11 @@ public class RoomController {
     @Autowired
     private SimpMessagingTemplate messagingTemplate;
 
-    // 🔥 Track users per room
+    // 🔥 Track active socket connections per room
     private final Map<String, Set<String>> roomUsers = new ConcurrentHashMap<>();
 
-    // 🔥 NEW: mapping for disconnect handling
-    private final Map<String, String> wsSessionToCustomSession = new ConcurrentHashMap<>();
-    private final Map<String, String> sessionToRoom = new ConcurrentHashMap<>();
+    // 🔥 Track which room each websocket session belongs to
+    private final Map<String, String> wsSessionToRoom = new ConcurrentHashMap<>();
 
 
     // =========================
@@ -96,26 +95,23 @@ public class RoomController {
                          SimpMessageHeaderAccessor headerAccessor) {
 
         String roomId = payload.get("roomId");
-        String sessionId = payload.get("sessionId");
-
         String wsSessionId = headerAccessor.getSessionId();
 
-        if (roomId == null || sessionId == null) return;
+        if (roomId == null || wsSessionId == null) return;
 
-        // 🔥 store mappings
-        wsSessionToCustomSession.put(wsSessionId, sessionId);
-        sessionToRoom.put(sessionId, roomId);
+        // 🔥 store mapping for disconnect cleanup
+        wsSessionToRoom.put(wsSessionId, roomId);
 
-        roomUsers.putIfAbsent(roomId, new HashSet<>());
+        roomUsers.computeIfAbsent(roomId, key -> ConcurrentHashMap.newKeySet());
 
         Set<String> users = roomUsers.get(roomId);
 
-        // 🔥 prevent duplicate
-        users.add(sessionId);
+        // 🔥 one unique connection per open tab/socket
+        users.add(wsSessionId);
 
         messagingTemplate.convertAndSend(
                 "/topic/users/" + roomId,
-                users
+                new ArrayList<>(users)
         );
     }
 
@@ -127,25 +123,24 @@ public class RoomController {
 
         String wsSessionId = event.getSessionId();
 
-        String sessionId = wsSessionToCustomSession.get(wsSessionId);
-
-        if (sessionId == null) return;
-
-        String roomId = sessionToRoom.get(sessionId);
+        String roomId = wsSessionToRoom.get(wsSessionId);
 
         if (roomId != null && roomUsers.containsKey(roomId)) {
 
             Set<String> users = roomUsers.get(roomId);
-            users.remove(sessionId);
+            users.remove(wsSessionId);
+
+            if (users.isEmpty()) {
+                roomUsers.remove(roomId);
+            }
 
             messagingTemplate.convertAndSend(
                     "/topic/users/" + roomId,
-                    users
+                    new ArrayList<>(users)
             );
         }
 
         // 🔥 cleanup
-        wsSessionToCustomSession.remove(wsSessionId);
-        sessionToRoom.remove(sessionId);
+        wsSessionToRoom.remove(wsSessionId);
     }
 }
