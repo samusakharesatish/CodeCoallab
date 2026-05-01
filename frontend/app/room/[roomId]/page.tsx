@@ -60,6 +60,9 @@ export default function RoomPage() {
   const [onlineUsers, setOnlineUsers] = useState<string[]>([]);
   const [view, setView] = useState<RoomView>("editor");
 
+  // ✅ NEW STATE (chat toggle)
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
   const isRemote = useRef(false);
 
   useEffect(() => {
@@ -124,17 +127,18 @@ export default function RoomPage() {
       onTyping: (data: TypingEventPayload) => {
         setTypingUsers((prev) => {
           const updated = new Set(prev);
-          if (data.isTyping) {
-            updated.add(data.userId);
-          } else {
-            updated.delete(data.userId);
-          }
+          if (data.isTyping) updated.add(data.userId);
+          else updated.delete(data.userId);
           return updated;
         });
       },
 
       onChat: (data: ChatMessage) => {
         setMessages((prev) => [...prev, data]);
+
+        if (!isChatOpen && data.userId !== userId) {
+          setUnreadCount((prev) => prev + 1);
+        }
       },
 
       onLanguage: (data: LanguageEventPayload) => {
@@ -190,7 +194,9 @@ export default function RoomPage() {
 
   return (
     <div className="h-screen flex flex-col bg-gray-950 text-white">
+      {/* HEADER */}
       <div className="flex items-center justify-between px-5 py-3 bg-white border-b border-gray-200 shadow-sm">
+        {/* LEFT */}
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 flex items-center justify-center rounded-xl bg-indigo-100">
             <span className="text-indigo-600 text-lg font-bold">{`</>`}</span>
@@ -209,21 +215,36 @@ export default function RoomPage() {
           </div>
         </div>
 
-        <div className="flex items-center gap-4">
-          {/* COPY BUTTON */}
+        {/* RIGHT */}
+        <div className="flex items-center gap-3">
+          {/* CHAT BUTTON */}
+          <button
+            onClick={() => {
+              setIsChatOpen(!isChatOpen);
+              if (!isChatOpen) setUnreadCount(0);
+            }}
+            className="relative px-2 py-1 text-xs rounded-md bg-indigo-700 text-white hover:bg-indigo-600"
+          >
+            💬 Chat
+            {unreadCount > 0 && (
+              <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[10px] px-1.5 rounded-full">
+                {unreadCount}
+              </span>
+            )}
+          </button>
+
+          {/* COPY */}
           <button
             onClick={() => {
               navigator.clipboard.writeText(window.location.href);
               toast.success("🔗 Link copied!");
             }}
-            className="flex items-center gap-1 px-2 py-1 text-xs rounded-md 
-               bg-indigo-700 text-white hover:bg-indigo-600 
-               transition shadow-sm"
+            className="px-2 py-1 text-xs rounded-md bg-indigo-700 text-white hover:bg-indigo-600"
           >
             📋 Copy
           </button>
 
-          {/* WHITEBOARD BUTTON */}
+          {/* WB */}
           <button
             onClick={() => {
               const newView: RoomView =
@@ -238,30 +259,29 @@ export default function RoomPage() {
               setView(newView);
               sendView(roomIdStr, payload);
             }}
-            className="flex items-center gap-1 px-2 py-1 text-xs rounded-md 
-               bg-indigo-700 text-white hover:bg-indigo-600 
-               transition shadow-sm"
+            className="px-2 py-1 text-xs rounded-md bg-indigo-700 text-white hover:bg-indigo-600"
           >
             {view === "editor" ? "🖊 WB" : "💻 Code"}
           </button>
 
-          {/* USER NAME */}
-          <div className="text-right hidden sm:block ml-12">
+          {/* USER */}
+          <div className="hidden sm:block ml-6">
             <p className="text-sm text-gray-900 font-semibold">{username}</p>
           </div>
 
           {/* AVATAR */}
-          <div className="w-10 h-10 flex items-center justify-center rounded-full bg-green-500 text-white font-semibold shadow-sm">
+          <div className="w-10 h-10 flex items-center justify-center rounded-full bg-green-500 text-white font-semibold">
             {username?.charAt(0).toUpperCase()}
           </div>
         </div>
       </div>
 
-      <div className="flex flex-1 overflow-hidden">
+      {/* MAIN */}
+      <div className="flex flex-1 overflow-hidden relative">
+        {/* EDITOR */}
         <div className="flex-1 flex flex-col">
           {view === "editor" ? (
             <EditorPanel
-              key="editor"
               roomId={roomIdStr}
               userId={userId}
               code={code}
@@ -271,15 +291,12 @@ export default function RoomPage() {
               output={output}
             />
           ) : (
-            <WhiteboardCanvas
-              key="whiteboard"
-              roomId={roomIdStr}
-              userId={userId}
-            />
+            <WhiteboardCanvas roomId={roomIdStr} userId={userId} />
           )}
         </div>
 
-        <div className="w-[320px] border-l border-gray-800 bg-gray-900 flex flex-col">
+        {/* DESKTOP CHAT */}
+        <div className="hidden lg:flex w-[320px] border-l border-gray-200 bg-white flex-col">
           <ChatPanel
             roomId={roomIdStr}
             userId={userId}
@@ -287,6 +304,18 @@ export default function RoomPage() {
             messages={messages}
           />
         </div>
+
+        {/* MOBILE / SMALL SCREEN CHAT */}
+        {isChatOpen && (
+          <div className="absolute right-0 top-0 bottom-0 w-[320px] bg-white border-l border-gray-300 z-40 flex flex-col">
+            <ChatPanel
+              roomId={roomIdStr}
+              userId={userId}
+              username={username || ""}
+              messages={messages}
+            />
+          </div>
+        )}
       </div>
     </div>
   );
