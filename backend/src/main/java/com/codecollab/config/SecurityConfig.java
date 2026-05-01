@@ -18,8 +18,9 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/auth/**").permitAll()
                 .requestMatchers("/room/**").permitAll()
+                .requestMatchers("/join/**").permitAll()   // ✅ ⭐ ADD THIS
                 .requestMatchers("/ws/**").permitAll()
-                .requestMatchers("/api/code/run").permitAll() // ✅ ADD THIS LINE
+                .requestMatchers("/api/code/run").permitAll()
                 .anyRequest().authenticated()
             )
 

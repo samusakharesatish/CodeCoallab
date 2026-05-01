@@ -83,12 +83,21 @@ export default function HomePage() {
     setLoading(true);
 
     try {
+      // ✅ ONLY ADD THIS
+      const token = localStorage.getItem("token");
+      const payload = JSON.parse(atob(token!.split(".")[1]));
+
       const res = await fetch(
         `${process.env.NEXT_PUBLIC_API_URL}/room/create`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ roomId: cleanRoom }),
+
+          // ✅ ONLY CHANGE HERE
+          body: JSON.stringify({
+            roomId: cleanRoom,
+            hostId: payload.sub,
+          }),
         }
       );
 
@@ -146,7 +155,6 @@ export default function HomePage() {
   return (
     <div className="min-h-screen bg-white text-gray-900 flex flex-col">
 
-      {/* HEADER */}
       <div className="flex justify-between items-center px-8 py-4 border-b bg-white/80 backdrop-blur">
         <h1 className="text-xl font-bold">CodeCollab 🔥</h1>
 
@@ -162,7 +170,6 @@ export default function HomePage() {
         </div>
       </div>
 
-      {/* MAIN */}
       <div className="flex flex-1 items-center justify-center px-6">
 
         <div className="w-full max-w-md bg-white border rounded-2xl shadow-xl p-8 space-y-6">
@@ -176,7 +183,6 @@ export default function HomePage() {
             </p>
           </div>
 
-          {/* INPUT */}
           <div className="flex gap-2">
             <input
               type="text"
@@ -194,7 +200,6 @@ export default function HomePage() {
             </button>
           </div>
 
-          {/* ACTION BUTTONS */}
           <div className="flex gap-3">
             <button
               onClick={joinRoom}
@@ -213,7 +218,6 @@ export default function HomePage() {
             </button>
           </div>
 
-          {/* LAST ROOM */}
           {lastRoom && (
             <button
               onClick={() => goToRoom(lastRoom)}
@@ -226,7 +230,6 @@ export default function HomePage() {
         </div>
       </div>
 
-      {/* FOOTER */}
       <div className="text-center py-4 text-gray-400 text-sm">
         Real-time collaboration made simple 🚀
       </div>

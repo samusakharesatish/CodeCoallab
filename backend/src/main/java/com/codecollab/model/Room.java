@@ -13,12 +13,17 @@ public class Room {
     private String id;
 
     private String roomId;
+    private String hostId; // ⭐ NEW (VERY IMPORTANT)
+
     private String code;
     private String language;
     private List<ChatMessage> messages = new ArrayList<>();
 
     public String getRoomId() { return roomId; }
     public void setRoomId(String roomId) { this.roomId = roomId; }
+
+    public String getHostId() { return hostId; }
+    public void setHostId(String hostId) { this.hostId = hostId; }
 
     public String getCode() { return code; }
     public void setCode(String code) { this.code = code; }

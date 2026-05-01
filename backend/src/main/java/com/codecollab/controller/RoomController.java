@@ -39,29 +39,34 @@ public class RoomController {
     // ✅ CREATE ROOM
     // =========================
     @PostMapping("/create")
-    public ResponseEntity<?> createRoom(@RequestBody(required = false) Room req) {
+public ResponseEntity<?> createRoom(@RequestBody(required = false) Room req) {
 
-        String roomId;
+    String roomId;
 
-        if (req != null && req.getRoomId() != null && !req.getRoomId().isEmpty()) {
-            roomId = req.getRoomId();
+    if (req != null && req.getRoomId() != null && !req.getRoomId().isEmpty()) {
+        roomId = req.getRoomId();
 
-            if (roomRepo.findByRoomId(roomId).isPresent()) {
-                return ResponseEntity.badRequest().body("Room already exists");
-            }
-        } else {
-            roomId = UUID.randomUUID().toString().substring(0, 6);
+        if (roomRepo.findByRoomId(roomId).isPresent()) {
+            return ResponseEntity.badRequest().body("Room already exists");
         }
-
-        Room room = new Room();
-        room.setRoomId(roomId);
-        room.setCode("");
-        room.setMessages(null);
-
-        roomRepo.save(room);
-
-        return ResponseEntity.ok(room);
+    } else {
+        roomId = UUID.randomUUID().toString().substring(0, 6);
     }
+
+    Room room = new Room();
+    room.setRoomId(roomId);
+    room.setCode("");
+    room.setMessages(new ArrayList<>());
+
+    // ⭐⭐⭐ ADD THIS LINE ⭐⭐⭐
+    if (req != null && req.getHostId() != null) {
+        room.setHostId(req.getHostId());
+    }
+
+    roomRepo.save(room);
+
+    return ResponseEntity.ok(room);
+}
 
     // =========================
     // ✅ CHECK ROOM EXISTS

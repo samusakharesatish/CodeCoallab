@@ -9,6 +9,8 @@ import EditorPanel from "./EditorPanel";
 import WhiteboardCanvas from "./WhiteboardCanvas";
 import { connectSocket, sendView } from "../../lib/socket";
 
+/* ================= TYPES ================= */
+
 type ChatMessage = {
   userId: string;
   message: string;
@@ -23,27 +25,20 @@ type ViewSyncPayload = {
   ts: number;
 };
 
-type DrawEventPayload = {
-  userId?: string;
-};
+type DrawEventPayload = { userId?: string };
+type CodeEventPayload = { userId?: string; code?: string };
+type TypingEventPayload = { userId: string; isTyping: boolean };
+type LanguageEventPayload = { language?: string };
+type RunEventPayload = { output?: string };
 
-type CodeEventPayload = {
-  userId?: string;
-  code?: string;
-};
-
-type TypingEventPayload = {
+type JoinRequest = {
+  roomId: string;
   userId: string;
-  isTyping: boolean;
+  username: string;
+  status: string;
 };
 
-type LanguageEventPayload = {
-  language?: string;
-};
-
-type RunEventPayload = {
-  output?: string;
-};
+/* ================= COMPONENT ================= */
 
 export default function RoomPage() {
   const params = useParams();
@@ -60,28 +55,34 @@ export default function RoomPage() {
   const [onlineUsers, setOnlineUsers] = useState<string[]>([]);
   const [view, setView] = useState<RoomView>("editor");
 
-  // ✅ NEW STATE (chat toggle)
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+
+  // 🔥 NEW (approval system)
+  const [isApproved, setIsApproved] = useState(false);
+  const [isHost, setIsHost] = useState(false);
+  const [requests, setRequests] = useState<JoinRequest[]>([]);
+
   const isRemote = useRef(false);
 
+  /* ================= SESSION ================= */
   useEffect(() => {
     let session = sessionStorage.getItem("sessionId");
-
     if (!session) {
       session = Math.random().toString(36).substring(2, 8);
       sessionStorage.setItem("sessionId", session);
     }
-
     setSessionId(session);
   }, []);
 
+  /* ================= SAVE ROOM ================= */
   useEffect(() => {
     if (roomIdStr) {
       localStorage.setItem("lastRoom", roomIdStr);
     }
   }, [roomIdStr]);
 
+  /* ================= AUTH ================= */
   useEffect(() => {
     const token = localStorage.getItem("token");
 
@@ -100,15 +101,104 @@ export default function RoomPage() {
     }
   }, []);
 
+  /* ================= CHECK HOST ================= */
   useEffect(() => {
-    if (!roomIdStr || !userId || !sessionId) return;
+    if (!roomIdStr || !userId) return;
+
+    const checkHost = async () => {
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/room/${roomIdStr}`
+      );
+      const data = await res.json();
+
+      if (String(data.hostId) === String(userId)) {
+        setIsHost(true);
+        setIsApproved(true);
+      } else {
+        await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL}/join/request`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ roomId: roomIdStr, userId, username }),
+          }
+        );
+      }
+    };
+
+    checkHost();
+  }, [roomIdStr, userId]);
+
+  /* ================= WAIT FOR APPROVAL ================= */
+  useEffect(() => {
+    if (!userId || isHost) return;
+
+    const interval = setInterval(async () => {
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/join/pending/${roomIdStr}`
+      );
+      const data: JoinRequest[] = await res.json();
+
+      const stillPending = data.find((r) => r.userId === userId);
+
+      if (!stillPending) {
+        setIsApproved(true);
+      }
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [userId, isHost]);
+
+  /* ================= HOST REQUEST LIST ================= */
+  const fetchRequests = async () => {
+    const res = await fetch(
+      `${process.env.NEXT_PUBLIC_API_URL}/join/pending/${roomIdStr}`
+    );
+    const data: JoinRequest[] = await res.json();
+    setRequests(data);
+  };
+
+  useEffect(() => {
+    if (!isHost) return;
+    fetchRequests();
+    const interval = setInterval(fetchRequests, 2000);
+    return () => clearInterval(interval);
+  }, [isHost]);
+
+  const approveUser = async (r: JoinRequest) => {
+    await fetch(`${process.env.NEXT_PUBLIC_API_URL}/join/approve`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(r),
+    });
+    fetchRequests();
+  };
+
+  const rejectUser = async (r: JoinRequest) => {
+    await fetch(`${process.env.NEXT_PUBLIC_API_URL}/join/reject`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(r),
+    });
+    fetchRequests();
+  };
+
+  /* ================= SOCKET ================= */
+  useEffect(() => {
+    if (!roomIdStr || !userId || !sessionId || !isApproved) return;
 
     connectSocket(roomIdStr, {
       userId,
       sessionId,
 
       onDraw: (data: DrawEventPayload) => {
-        window.dispatchEvent(new CustomEvent("draw-event", { detail: data }));
+        window.dispatchEvent(
+          new CustomEvent("draw-event", { detail: data })
+        );
       },
 
       onCode: (data: CodeEventPayload) => {
@@ -158,20 +248,21 @@ export default function RoomPage() {
         setView(data.view);
       },
     });
-  }, [roomIdStr, sessionId, userId]);
+  }, [roomIdStr, sessionId, userId, isApproved]);
 
+  /* ================= FETCH ROOM ================= */
   useEffect(() => {
     if (!roomIdStr) return;
 
     const fetchRoom = async () => {
       try {
         const res = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/room/${roomIdStr}`,
+          `${process.env.NEXT_PUBLIC_API_URL}/room/${roomIdStr}`
         );
 
         if (!res.ok) return;
 
-        let data;
+        let data: any;
         try {
           data = await res.json();
         } catch {
@@ -192,10 +283,19 @@ export default function RoomPage() {
 
   if (!roomIdStr || !userId) return null;
 
+  if (!isApproved) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-gray-950 text-white">
+        Waiting for host approval...
+      </div>
+    );
+  }
+
   return (
     <div className="h-screen flex flex-col bg-gray-950 text-white">
       {/* HEADER */}
       <div className="flex items-center justify-between px-5 py-3 bg-white border-b border-gray-200 shadow-sm">
+        
         {/* LEFT */}
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 flex items-center justify-center rounded-xl bg-indigo-100">
@@ -216,8 +316,26 @@ export default function RoomPage() {
         </div>
 
         {/* RIGHT */}
-        <div className="flex items-center gap-3">
-          {/* CHAT BUTTON */}
+        <div className="flex items-center gap-3 relative">
+
+          {/* 🔥 JOIN REQUEST POPUP */}
+          {isHost && requests.length > 0 && (
+            <div className="absolute top-12 right-0 bg-white text-black p-3 rounded-lg shadow-lg w-60 z-50">
+              <p className="font-semibold mb-2">Join Requests</p>
+
+              {requests.map((r) => (
+                <div key={r.userId} className="flex justify-between mb-2">
+                  <span>{r.username}</span>
+                  <div className="flex gap-2">
+                    <button onClick={() => approveUser(r)}>✔</button>
+                    <button onClick={() => rejectUser(r)}>✖</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* CHAT */}
           <button
             onClick={() => {
               setIsChatOpen(!isChatOpen);
@@ -278,6 +396,7 @@ export default function RoomPage() {
 
       {/* MAIN */}
       <div className="flex flex-1 overflow-hidden relative">
+
         {/* EDITOR */}
         <div className="flex-1 flex flex-col">
           {view === "editor" ? (
@@ -295,7 +414,7 @@ export default function RoomPage() {
           )}
         </div>
 
-        {/* DESKTOP CHAT */}
+        {/* CHAT (DESKTOP) */}
         <div className="hidden lg:flex w-[320px] border-l border-gray-200 bg-white flex-col">
           <ChatPanel
             roomId={roomIdStr}
@@ -305,7 +424,7 @@ export default function RoomPage() {
           />
         </div>
 
-        {/* MOBILE / SMALL SCREEN CHAT */}
+        {/* CHAT (SMALL SCREEN) */}
         {isChatOpen && (
           <div className="absolute right-0 top-0 bottom-0 w-[320px] bg-white border-l border-gray-300 z-40 flex flex-col">
             <ChatPanel
