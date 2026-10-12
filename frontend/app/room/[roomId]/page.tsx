@@ -106,9 +106,16 @@ export default function RoomPage() {
     if (!roomIdStr || !userId) return;
 
     const checkHost = async () => {
+      const token = localStorage.getItem("token");
       const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/room/${roomIdStr}`
+        `${process.env.NEXT_PUBLIC_API_URL}/room/${roomIdStr}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
       );
+      if (!res.ok) return;
       const data = await res.json();
 
       if (String(data.hostId) === String(userId)) {
@@ -119,7 +126,10 @@ export default function RoomPage() {
           `${process.env.NEXT_PUBLIC_API_URL}/join/request`,
           {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
             body: JSON.stringify({ roomId: roomIdStr, userId, username }),
           }
         );
@@ -127,33 +137,50 @@ export default function RoomPage() {
     };
 
     checkHost();
-  }, [roomIdStr, userId]);
+  }, [roomIdStr, userId, username]);
 
   /* ================= WAIT FOR APPROVAL ================= */
   useEffect(() => {
-    if (!userId || isHost) return;
+    if (!userId || isHost || isApproved) return;
 
     const interval = setInterval(async () => {
+      const token = localStorage.getItem("token");
       const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/join/pending/${roomIdStr}`
+        `${process.env.NEXT_PUBLIC_API_URL}/join/status/${roomIdStr}/${userId}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
       );
-      const data: JoinRequest[] = await res.json();
+      if (!res.ok) return;
+      const data = await res.json();
 
-      const stillPending = data.find((r) => r.userId === userId);
-
-      if (!stillPending) {
+      if (data.status === "APPROVED") {
         setIsApproved(true);
+        toast.success("Host approved your join request!");
+        clearInterval(interval);
+      } else if (data.status === "REJECTED") {
+        toast.error("Host rejected your join request.");
+        clearInterval(interval);
       }
     }, 3000);
 
     return () => clearInterval(interval);
-  }, [userId, isHost]);
+  }, [roomIdStr, userId, isHost, isApproved]);
 
   /* ================= HOST REQUEST LIST ================= */
   const fetchRequests = async () => {
+    const token = localStorage.getItem("token");
     const res = await fetch(
-      `${process.env.NEXT_PUBLIC_API_URL}/join/pending/${roomIdStr}`
+      `${process.env.NEXT_PUBLIC_API_URL}/join/pending/${roomIdStr}`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
     );
+    if (!res.ok) return;
     const data: JoinRequest[] = await res.json();
     setRequests(data);
   };
@@ -166,10 +193,12 @@ export default function RoomPage() {
   }, [isHost]);
 
   const approveUser = async (r: JoinRequest) => {
+    const token = localStorage.getItem("token");
     await fetch(`${process.env.NEXT_PUBLIC_API_URL}/join/approve`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify(r),
     });
@@ -177,10 +206,12 @@ export default function RoomPage() {
   };
 
   const rejectUser = async (r: JoinRequest) => {
+    const token = localStorage.getItem("token");
     await fetch(`${process.env.NEXT_PUBLIC_API_URL}/join/reject`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify(r),
     });
@@ -256,8 +287,14 @@ export default function RoomPage() {
 
     const fetchRoom = async () => {
       try {
+        const token = localStorage.getItem("token");
         const res = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/room/${roomIdStr}`
+          `${process.env.NEXT_PUBLIC_API_URL}/room/${roomIdStr}`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
         );
 
         if (!res.ok) return;
@@ -285,120 +322,181 @@ export default function RoomPage() {
 
   if (!isApproved) {
     return (
-      <div className="h-screen flex items-center justify-center bg-gray-950 text-white">
-        Waiting for host approval...
+      <div className="min-h-screen bg-[#09090b] text-zinc-100 flex flex-col items-center justify-center p-6 relative overflow-hidden">
+        <div className="absolute w-96 h-96 bg-indigo-500/10 rounded-full blur-[140px] pointer-events-none" />
+        <div className="relative z-10 max-w-sm w-full p-8 rounded-2xl bg-zinc-900/60 border border-white/[0.08] backdrop-blur-2xl text-center shadow-2xl space-y-4">
+          <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 mx-auto flex items-center justify-center text-xl animate-pulse">
+            ⏳
+          </div>
+          <h2 className="text-lg font-semibold text-white">Pending Host Approval</h2>
+          <p className="text-xs text-zinc-400 leading-relaxed">
+            Your request to enter room <span className="font-mono text-indigo-300 font-medium">{roomIdStr}</span> was sent to the host. You'll enter automatically once approved.
+          </p>
+          <div className="pt-2">
+            <button
+              onClick={() => (window.location.href = "/home")}
+              className="text-xs text-zinc-500 hover:text-zinc-300 transition"
+            >
+              ← Return to Hub
+            </button>
+          </div>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="h-screen flex flex-col bg-gray-950 text-white">
-      {/* HEADER */}
-      <div className="flex items-center justify-between px-5 py-3 bg-white border-b border-gray-200 shadow-sm">
-        
-        {/* LEFT */}
+    <div className="h-screen flex flex-col bg-[#09090b] text-zinc-100 overflow-hidden select-none">
+      {/* GLASS TOP NAVIGATION */}
+      <header className="h-14 px-5 flex items-center justify-between border-b border-white/[0.06] bg-zinc-950/70 backdrop-blur-xl z-30 shrink-0">
+        {/* LEFT: BRAND & ROOM INFO */}
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 flex items-center justify-center rounded-xl bg-indigo-100">
-            <span className="text-indigo-600 text-lg font-bold">{`</>`}</span>
-          </div>
+          <a
+            href="/home"
+            className="flex items-center gap-2 group"
+            title="Return to Hub"
+          >
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-md border border-white/10 group-hover:scale-105 transition-transform">
+              <span className="font-mono text-sm font-bold text-white">&lt;/&gt;</span>
+            </div>
+          </a>
 
-          <div className="flex items-center gap-2">
-            <span className="text-gray-600 text-sm font-medium">Room</span>
-            <span className="px-3 py-1 text-sm rounded-full bg-indigo-50 text-indigo-600 font-semibold">
-              {roomIdStr}
-            </span>
+          <div className="h-4 w-px bg-white/[0.1]" />
 
-            <span className="flex items-center gap-1 px-2 py-1 text-xs rounded-full bg-green-100 text-green-600 font-medium">
-              <span className="w-2 h-2 bg-green-500 rounded-full"></span>
-              {onlineUsers.length > 0 ? onlineUsers.length : 1} online
-            </span>
+          {/* Room Pill */}
+          <button
+            onClick={() => {
+              navigator.clipboard.writeText(window.location.href);
+              toast.success("🔗 Room invite link copied!");
+            }}
+            className="flex items-center gap-2 px-2.5 py-1 rounded-lg bg-zinc-900/80 hover:bg-zinc-800 border border-white/[0.08] transition text-xs font-mono text-zinc-300"
+            title="Click to copy link"
+          >
+            <span className="text-zinc-500">Room:</span>
+            <span className="text-white font-medium">{roomIdStr}</span>
+            <span className="text-[10px] text-zinc-500 hover:text-zinc-300">📋</span>
+          </button>
+
+          {/* Active Participants */}
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-mono">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            <span>{onlineUsers.length > 0 ? onlineUsers.length : 1} active</span>
           </div>
         </div>
 
-        {/* RIGHT */}
+        {/* CENTER: VIEW TOGGLE (SEGMENTED PILL) */}
+        <div className="flex items-center p-1 rounded-xl bg-zinc-900/80 border border-white/[0.08] backdrop-blur-md">
+          <button
+            onClick={() => {
+              if (view !== "editor") {
+                const newView: RoomView = "editor";
+                setView(newView);
+                sendView(roomIdStr, { roomId: roomIdStr, view: newView, ts: Date.now() });
+              }
+            }}
+            className={`flex items-center gap-1.5 px-3.5 py-1 rounded-lg text-xs font-medium transition ${
+              view === "editor"
+                ? "bg-white text-zinc-950 font-semibold shadow-sm"
+                : "text-zinc-400 hover:text-zinc-200"
+            }`}
+          >
+            <span>💻</span>
+            <span>Code Editor</span>
+          </button>
+
+          <button
+            onClick={() => {
+              if (view !== "whiteboard") {
+                const newView: RoomView = "whiteboard";
+                setView(newView);
+                sendView(roomIdStr, { roomId: roomIdStr, view: newView, ts: Date.now() });
+              }
+            }}
+            className={`flex items-center gap-1.5 px-3.5 py-1 rounded-lg text-xs font-medium transition ${
+              view === "whiteboard"
+                ? "bg-white text-zinc-950 font-semibold shadow-sm"
+                : "text-zinc-400 hover:text-zinc-200"
+            }`}
+          >
+            <span>✏️</span>
+            <span>Whiteboard</span>
+          </button>
+        </div>
+
+        {/* RIGHT: CONTROLS & USER PROFILE */}
         <div className="flex items-center gap-3 relative">
-
-          {/* 🔥 JOIN REQUEST POPUP */}
+          {/* HOST APPROVAL MODAL */}
           {isHost && requests.length > 0 && (
-            <div className="absolute top-12 right-0 bg-white text-black p-3 rounded-lg shadow-lg w-60 z-50">
-              <p className="font-semibold mb-2">Join Requests</p>
+            <div className="absolute top-12 right-24 bg-zinc-900 border border-white/[0.1] text-zinc-100 p-4 rounded-2xl shadow-2xl w-64 z-50 backdrop-blur-2xl">
+              <div className="flex items-center justify-between pb-2 mb-3 border-b border-white/[0.08]">
+                <p className="text-xs font-semibold text-white">Join Requests ({requests.length})</p>
+                <span className="text-[10px] text-amber-400 font-mono">Host Action</span>
+              </div>
 
-              {requests.map((r) => (
-                <div key={r.userId} className="flex justify-between mb-2">
-                  <span>{r.username}</span>
-                  <div className="flex gap-2">
-                    <button onClick={() => approveUser(r)}>✔</button>
-                    <button onClick={() => rejectUser(r)}>✖</button>
+              <div className="space-y-2 max-h-48 overflow-y-auto">
+                {requests.map((r) => (
+                  <div
+                    key={r.userId}
+                    className="flex items-center justify-between p-2 rounded-xl bg-zinc-950/60 border border-white/[0.04]"
+                  >
+                    <span className="text-xs text-zinc-200 truncate font-mono">{r.username}</span>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        onClick={() => approveUser(r)}
+                        className="w-6 h-6 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs flex items-center justify-center transition"
+                        title="Approve"
+                      >
+                        ✓
+                      </button>
+                      <button
+                        onClick={() => rejectUser(r)}
+                        className="w-6 h-6 rounded-lg bg-red-600/80 hover:bg-red-600 text-white text-xs flex items-center justify-center transition"
+                        title="Reject"
+                      >
+                        ✕
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           )}
 
-          {/* CHAT */}
+          {/* CHAT TOGGLE (MOBILE / DESKTOP) */}
           <button
             onClick={() => {
               setIsChatOpen(!isChatOpen);
               if (!isChatOpen) setUnreadCount(0);
             }}
-            className="relative px-2 py-1 text-xs rounded-md bg-indigo-700 text-white hover:bg-indigo-600"
+            className={`relative flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition border ${
+              isChatOpen
+                ? "bg-indigo-600 text-white border-indigo-500 shadow-md shadow-indigo-600/20"
+                : "bg-zinc-900 border-white/[0.08] text-zinc-300 hover:text-white hover:bg-zinc-800"
+            }`}
           >
-            💬 Chat
+            <span>💬</span>
+            <span className="hidden sm:inline">Chat</span>
             {unreadCount > 0 && (
-              <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[10px] px-1.5 rounded-full">
+              <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold animate-pulse">
                 {unreadCount}
               </span>
             )}
           </button>
 
-          {/* COPY */}
-          <button
-            onClick={() => {
-              navigator.clipboard.writeText(window.location.href);
-              toast.success("🔗 Link copied!");
-            }}
-            className="px-2 py-1 text-xs rounded-md bg-indigo-700 text-white hover:bg-indigo-600"
-          >
-            📋 Copy
-          </button>
-
-          {/* WB */}
-          <button
-            onClick={() => {
-              const newView: RoomView =
-                view === "editor" ? "whiteboard" : "editor";
-
-              const payload: ViewSyncPayload = {
-                roomId: roomIdStr,
-                view: newView,
-                ts: Date.now(),
-              };
-
-              setView(newView);
-              sendView(roomIdStr, payload);
-            }}
-            className="px-2 py-1 text-xs rounded-md bg-indigo-700 text-white hover:bg-indigo-600"
-          >
-            {view === "editor" ? "🖊 WB" : "💻 Code"}
-          </button>
-
-          {/* USER */}
-          <div className="hidden sm:block ml-6">
-            <p className="text-sm text-gray-900 font-semibold">{username}</p>
-          </div>
-
-          {/* AVATAR */}
-          <div className="w-10 h-10 flex items-center justify-center rounded-full bg-green-500 text-white font-semibold">
-            {username?.charAt(0).toUpperCase()}
+          {/* USER BADGE */}
+          <div className="flex items-center gap-2 pl-2 border-l border-white/[0.08]">
+            <div className="w-7 h-7 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 text-white font-semibold text-xs flex items-center justify-center shadow-inner">
+              {username?.charAt(0).toUpperCase()}
+            </div>
+            <span className="text-xs text-zinc-300 font-medium hidden md:inline">{username}</span>
           </div>
         </div>
-      </div>
+      </header>
 
-      {/* MAIN */}
-      <div className="flex flex-1 overflow-hidden relative">
-
-        {/* EDITOR */}
-        <div className="flex-1 flex flex-col">
+      {/* MAIN WORKSPACE CONTENT */}
+      <div className="flex-1 flex overflow-hidden relative">
+        {/* VIEW AREA */}
+        <div className="flex-1 flex flex-col overflow-hidden relative">
           {view === "editor" ? (
             <EditorPanel
               roomId={roomIdStr}
@@ -414,19 +512,21 @@ export default function RoomPage() {
           )}
         </div>
 
-        {/* CHAT (DESKTOP) */}
-        <div className="hidden lg:flex w-[320px] border-l border-gray-200 bg-white flex-col">
-          <ChatPanel
-            roomId={roomIdStr}
-            userId={userId}
-            username={username || ""}
-            messages={messages}
-          />
-        </div>
-
-        {/* CHAT (SMALL SCREEN) */}
+        {/* CHAT DRAWER (DESKTOP) */}
         {isChatOpen && (
-          <div className="absolute right-0 top-0 bottom-0 w-[320px] bg-white border-l border-gray-300 z-40 flex flex-col">
+          <div className="hidden lg:flex w-80 shrink-0 h-full">
+            <ChatPanel
+              roomId={roomIdStr}
+              userId={userId}
+              username={username || ""}
+              messages={messages}
+            />
+          </div>
+        )}
+
+        {/* CHAT DRAWER (MOBILE / OVERLAY) */}
+        {isChatOpen && (
+          <div className="lg:hidden absolute right-0 top-0 bottom-0 w-80 z-40 shadow-2xl">
             <ChatPanel
               roomId={roomIdStr}
               userId={userId}

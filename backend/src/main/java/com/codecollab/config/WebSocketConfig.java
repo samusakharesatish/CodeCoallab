@@ -1,7 +1,6 @@
 package com.codecollab.config;
 
 import com.codecollab.auth.AuthChannelInterceptor;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.lang.NonNull;
 import org.springframework.messaging.simp.config.ChannelRegistration;
@@ -12,8 +11,11 @@ import org.springframework.web.socket.config.annotation.*;
 @EnableWebSocketMessageBroker
 public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
-    @Autowired
-    private AuthChannelInterceptor authChannelInterceptor; // ✅ NEW
+    private final AuthChannelInterceptor authChannelInterceptor;
+
+    public WebSocketConfig(AuthChannelInterceptor authChannelInterceptor) {
+        this.authChannelInterceptor = authChannelInterceptor;
+    }
 
     @Override
     public void configureMessageBroker(@NonNull MessageBrokerRegistry config) {

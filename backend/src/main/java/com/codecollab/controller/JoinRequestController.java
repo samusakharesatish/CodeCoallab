@@ -1,10 +1,16 @@
 package com.codecollab.controller;
 
 import com.codecollab.model.JoinRequest;
+import com.codecollab.model.Room;
 import com.codecollab.repository.JoinRequestRepository;
+import com.codecollab.repository.RoomRepository;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 
 @RestController
 @RequestMapping("/join")
@@ -13,8 +19,11 @@ public class JoinRequestController {
 
     private final JoinRequestRepository repo;
 
-    public JoinRequestController(JoinRequestRepository repo) {
+    private final RoomRepository roomRepo;
+
+    public JoinRequestController(JoinRequestRepository repo, RoomRepository roomRepo) {
         this.repo = repo;
+        this.roomRepo = roomRepo;
     }
 
     // 👉 User requests to join
@@ -33,6 +42,16 @@ public class JoinRequestController {
         return "Request sent";
     }
 
+    // 👉 User checks their own status (PENDING / APPROVED / REJECTED / NONE)
+    @GetMapping("/status/{roomId}/{userId}")
+    public ResponseEntity<?> getStatus(@PathVariable String roomId, @PathVariable String userId) {
+        JoinRequest jr = repo.findByRoomIdAndUserId(roomId, userId);
+        if (jr == null) {
+            return ResponseEntity.ok(Map.of("status", "NONE"));
+        }
+        return ResponseEntity.ok(Map.of("status", jr.getStatus()));
+    }
+
     // 👉 Host sees pending requests
     @GetMapping("/pending/{roomId}")
     public List<JoinRequest> getPending(@PathVariable String roomId) {
@@ -41,7 +60,16 @@ public class JoinRequestController {
 
     // 👉 Host approves user
     @PostMapping("/approve")
-    public String approve(@RequestBody JoinRequest req) {
+    public String approve(@RequestBody JoinRequest req, Authentication auth) {
+        Optional<Room> roomOpt = roomRepo.findByRoomId(req.getRoomId());
+        if (roomOpt.isPresent() && auth != null) {
+            Room room = roomOpt.get();
+            // Verify caller is host
+            if (room.getHostId() != null && !room.getHostId().equals(auth.getName())) {
+                return "Unauthorized: only the host can approve requests";
+            }
+        }
+
         JoinRequest jr = repo.findByRoomIdAndUserId(req.getRoomId(), req.getUserId());
 
         if (jr == null) return "Request not found";
@@ -54,7 +82,16 @@ public class JoinRequestController {
 
     // 👉 Host rejects user
     @PostMapping("/reject")
-    public String reject(@RequestBody JoinRequest req) {
+    public String reject(@RequestBody JoinRequest req, Authentication auth) {
+        Optional<Room> roomOpt = roomRepo.findByRoomId(req.getRoomId());
+        if (roomOpt.isPresent() && auth != null) {
+            Room room = roomOpt.get();
+            // Verify caller is host
+            if (room.getHostId() != null && !room.getHostId().equals(auth.getName())) {
+                return "Unauthorized: only the host can reject requests";
+            }
+        }
+
         JoinRequest jr = repo.findByRoomIdAndUserId(req.getRoomId(), req.getUserId());
 
         if (jr == null) return "Request not found";

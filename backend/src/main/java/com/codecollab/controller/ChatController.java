@@ -4,7 +4,6 @@ import com.codecollab.model.ChatMessage;
 import com.codecollab.model.Message;
 import com.codecollab.repository.MessageRepository;
 
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Controller;
@@ -12,27 +11,29 @@ import org.springframework.stereotype.Controller;
 @Controller
 public class ChatController {
 
-    @Autowired
-    private SimpMessagingTemplate messagingTemplate;
+    private final SimpMessagingTemplate messagingTemplate;
+    private final MessageRepository messageRepo;
 
-    @Autowired
-    private MessageRepository messageRepo;
+    public ChatController(SimpMessagingTemplate messagingTemplate, MessageRepository messageRepo) {
+        this.messagingTemplate = messagingTemplate;
+        this.messageRepo = messageRepo;
+    }
 
     @MessageMapping("/chat")
-public void sendChat(ChatMessage chatMessage) {
+    public void sendChat(ChatMessage chatMessage) {
 
-    Message msg = new Message();
-    msg.setRoomId(chatMessage.getRoomId());
-    msg.setUserId(chatMessage.getUserId());
-    msg.setUsername(chatMessage.getUsername()); // ✅ ADD THIS
-    msg.setMessage(chatMessage.getMessage());
-    msg.setTimestamp(chatMessage.getTimestamp());
+        Message msg = new Message();
+        msg.setRoomId(chatMessage.getRoomId());
+        msg.setUserId(chatMessage.getUserId());
+        msg.setUsername(chatMessage.getUsername());
+        msg.setMessage(chatMessage.getMessage());
+        msg.setTimestamp(chatMessage.getTimestamp());
 
-    messageRepo.save(msg);
+        messageRepo.save(msg);
 
-    messagingTemplate.convertAndSend(
-            "/topic/chat/" + chatMessage.getRoomId(),
-            chatMessage
-    );
-}
+        messagingTemplate.convertAndSend(
+                "/topic/chat/" + chatMessage.getRoomId(),
+                chatMessage
+        );
+    }
 }

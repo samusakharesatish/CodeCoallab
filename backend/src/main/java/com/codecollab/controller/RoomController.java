@@ -2,8 +2,6 @@ package com.codecollab.controller;
 
 import com.codecollab.model.Room;
 import com.codecollab.repository.RoomRepository;
-
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -22,11 +20,13 @@ import java.util.concurrent.ConcurrentHashMap;
 @CrossOrigin("*")
 public class RoomController {
 
-    @Autowired
-    private RoomRepository roomRepo;
+    private final RoomRepository roomRepo;
+    private final SimpMessagingTemplate messagingTemplate;
 
-    @Autowired
-    private SimpMessagingTemplate messagingTemplate;
+    public RoomController(RoomRepository roomRepo, SimpMessagingTemplate messagingTemplate) {
+        this.roomRepo = roomRepo;
+        this.messagingTemplate = messagingTemplate;
+    }
 
     // 🔥 Track active socket connections per room
     private final Map<String, Set<String>> roomUsers = new ConcurrentHashMap<>();

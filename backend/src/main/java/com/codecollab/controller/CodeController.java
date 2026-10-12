@@ -1,10 +1,9 @@
 package com.codecollab.controller;
 
-import com.codecollab.model.CodeMessage;   // ✅ FIXED (was ChatMessage)
+import com.codecollab.model.CodeMessage;
 import com.codecollab.model.Room;
 import com.codecollab.repository.RoomRepository;
 
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Controller;
@@ -12,11 +11,13 @@ import org.springframework.stereotype.Controller;
 @Controller
 public class CodeController {
 
-    @Autowired
-    private SimpMessagingTemplate messagingTemplate;
+    private final SimpMessagingTemplate messagingTemplate;
+    private final RoomRepository roomRepo;
 
-    @Autowired
-    private RoomRepository roomRepo;
+    public CodeController(SimpMessagingTemplate messagingTemplate, RoomRepository roomRepo) {
+        this.messagingTemplate = messagingTemplate;
+        this.roomRepo = roomRepo;
+    }
 
     @MessageMapping("/code")
     public void sendCode(CodeMessage message) {

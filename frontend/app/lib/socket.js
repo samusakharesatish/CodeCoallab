@@ -11,9 +11,11 @@ export const getClient = () => stompClient;
 
 export const connectSocket = (roomId, handlers) => {
   const socket = new SockJS(`${process.env.NEXT_PUBLIC_API_URL}/ws`);
+  const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
 
   stompClient = new Client({
     webSocketFactory: () => socket,
+    connectHeaders: token ? { Authorization: `Bearer ${token}` } : {},
 
     onConnect: () => {
       console.log("Connected ✅");
@@ -62,14 +64,14 @@ export const connectSocket = (roomId, handlers) => {
         handlers.onLanguage(JSON.parse(message.body));
       });
 
-      // ✅ DRAW (ADD THIS)
-      stompClient.subscribe(`/topic/draw`, (message) => {
+      // ✅ DRAW (SCOPED PER ROOM)
+      stompClient.subscribe(`/topic/draw/${roomId}`, (message) => {
         if (!handlers?.onDraw) return;
         handlers.onDraw(JSON.parse(message.body));
       });
 
-      // ✅ VIEW SYNC
-      stompClient.subscribe(`/topic/view`, (message) => {
+      // ✅ VIEW SYNC (SCOPED PER ROOM)
+      stompClient.subscribe(`/topic/view/${roomId}`, (message) => {
         if (!handlers?.onView) return;
         handlers.onView(JSON.parse(message.body));
       });

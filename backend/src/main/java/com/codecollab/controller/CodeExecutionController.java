@@ -6,7 +6,6 @@ import org.springframework.http.*;
 
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
-import org.springframework.beans.factory.annotation.Autowired;
 
 import com.codecollab.model.ChatMessage;
 import com.codecollab.model.RunResponse;
@@ -22,8 +21,11 @@ public class CodeExecutionController {
 
     private static final String API_URL = "https://ce.judge0.com/submissions?base64_encoded=false&wait=true";
 
-    @Autowired
-    private SimpMessagingTemplate messagingTemplate;
+    private final SimpMessagingTemplate messagingTemplate;
+
+    public CodeExecutionController(SimpMessagingTemplate messagingTemplate) {
+        this.messagingTemplate = messagingTemplate;
+    }
 
     // ✅ REST API RUN
     @PostMapping("/run")
