@@ -16,39 +16,34 @@ export default function EditorPanel({
   typingUsers,
   output,
   isRemote,
+  language: propLanguage,
+  setLanguage: propSetLanguage,
 }: any) {
   const editorRef = useRef<any>(null);
   const typingTimeout = useRef<NodeJS.Timeout | null>(null);
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
 
-  // ✅ Track the last version we sent to the server to prevent loops
   const lastAcknowledgedCode = useRef(code);
-
-  const [language, setLanguage] = useState("javascript");
+  const [internalLanguage, setInternalLanguage] = useState("javascript");
+  const language = propLanguage || internalLanguage;
+  const setLanguage = propSetLanguage || setInternalLanguage;
   const [loading, setLoading] = useState(false);
+  const [isConsoleOpen, setIsConsoleOpen] = useState(true);
 
-  // ✅ 1. REMOTE UPDATE SYNC
-  // This effect listens for code changes from the socket (via the parent)
+  // Sync remote changes
   useEffect(() => {
     if (isRemote.current && editorRef.current) {
       const editor = editorRef.current;
       const currentModelValue = editor.getValue();
 
       if (code !== currentModelValue) {
-        // Save current cursor position so it doesn't jump
         const savedPosition = editor.getPosition();
-
-        // Directly set value on the editor instance (fastest method)
         editor.setValue(code);
-
-        // Restore cursor position
         if (savedPosition) {
           editor.setPosition(savedPosition);
         }
-
         lastAcknowledgedCode.current = code;
       }
-      // Reset the lock
       isRemote.current = false;
     }
   }, [code, isRemote]);
@@ -56,147 +51,166 @@ export default function EditorPanel({
   const handleChange = (value: string | undefined) => {
     const newCode = value || "";
 
-    // ✅ FIX 1: reset isRemote properly
     if (isRemote.current) {
       isRemote.current = false;
       return;
     }
 
-    // ✅ prevent unnecessary updates
     if (newCode === code) return;
     setCode(newCode);
 
-    // 🚀 1. INSTANT SEND (main fix)
     if (newCode !== lastAcknowledgedCode.current) {
       sendCode(newCode, roomId, userId);
       lastAcknowledgedCode.current = newCode;
     }
 
-    // 🧠 2. DEBOUNCE BACKUP (optional safety)
     if (debounceRef.current) clearTimeout(debounceRef.current);
-
     debounceRef.current = setTimeout(() => {
       lastAcknowledgedCode.current = newCode;
     }, 200);
 
-    // typing indicator
     sendTyping(roomId, userId, true);
-
     if (typingTimeout.current) clearTimeout(typingTimeout.current);
-
     typingTimeout.current = setTimeout(() => {
       sendTyping(roomId, userId, false);
     }, 1000);
   };
+
   const runCode = () => {
     setLoading(true);
+    setIsConsoleOpen(true);
     sendRun(roomId, {
       code,
       language,
       userId,
     });
-    // Visual feedback for the run button
-    setTimeout(() => setLoading(false), 1000);
+    setTimeout(() => setLoading(false), 800);
   };
 
-  // ✅ 4. OUTPUT FORMATTING (Your original logic)
   const formatOutput = (raw: string) => {
+    if (!raw) return "Press 'Run' to execute code and view output here.";
     try {
       const parsed = JSON.parse(raw);
       return (
-        parsed.stdout || parsed.stderr || parsed.compile_output || "No output"
+        parsed.stdout || parsed.stderr || parsed.compile_output || raw
       );
     } catch {
       return raw;
     }
   };
 
-  const activeTypingUsers = [...typingUsers].filter((u) => u !== userId);
+  const activeTypingUsers = Array.from(typingUsers || []).filter(
+    (u) => u !== userId
+  ) as string[];
 
   return (
-    <div className="flex-1 flex flex-col bg-white">
-      {/* HEADER */}
-      <div className="h-[56px] flex items-center justify-between px-4 bg-white border-b border-gray-200">
+    <div className="h-full flex flex-col bg-[#09090b] text-zinc-100 overflow-hidden">
+      {/* TOOLBAR */}
+      <div className="h-12 px-4 flex items-center justify-between border-b border-white/[0.06] bg-zinc-950/70 backdrop-blur-md select-none">
+        {/* Left: Language & Run */}
         <div className="flex items-center gap-3">
-          <select
-            value={language}
-            onChange={(e) => {
-              const newLang = e.target.value;
-              setLanguage(newLang);
-              sendLanguage(roomId, {
-                roomId,
-                language: newLang,
-                userId,
-              });
-            }}
-            className="bg-gray-100 text-gray-800 text-sm px-3 py-1.5 rounded-lg border border-gray-300 outline-none"
-          >
-            <option value="javascript">JavaScript</option>
-            <option value="java">Java</option>
-            <option value="python">Python</option>
-          </select>
+          <div className="flex items-center gap-1.5 text-xs text-zinc-400 font-mono">
+            <span>Lang:</span>
+            <select
+              value={language}
+              onChange={(e) => {
+                const newLang = e.target.value;
+                setLanguage(newLang);
+                sendLanguage(roomId, {
+                  roomId,
+                  language: newLang,
+                  userId,
+                });
+              }}
+              className="bg-zinc-900 border border-white/[0.08] text-zinc-200 text-xs px-2.5 py-1 rounded-lg outline-none font-mono focus:border-indigo-500/80 transition"
+            >
+              <option value="javascript">JavaScript</option>
+              <option value="python">Python</option>
+              <option value="java">Java</option>
+            </select>
+          </div>
 
           <button
             onClick={runCode}
             disabled={loading}
-            className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-1.5 text-sm rounded-lg shadow-sm transition disabled:opacity-50"
+            className="flex items-center gap-1.5 px-3.5 py-1 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-600/20 transition disabled:opacity-50"
           >
-            ▶ {loading ? "Running..." : "Run"}
+            <span>{loading ? "⟳" : "▶"}</span>
+            <span>{loading ? "Running..." : "Run"}</span>
           </button>
         </div>
 
-        <div className="text-sm text-gray-500 flex items-center gap-2">
-          👥 Live editing
+        {/* Right: Typing indicators & Console toggle */}
+        <div className="flex items-center gap-3">
+          {activeTypingUsers.length > 0 && (
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 text-[11px] font-mono">
+              <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse" />
+              <span>{activeTypingUsers.join(", ")} typing...</span>
+            </div>
+          )}
+
+          <button
+            onClick={() => setIsConsoleOpen(!isConsoleOpen)}
+            className={`px-2.5 py-1 rounded-lg text-xs font-mono transition border ${
+              isConsoleOpen
+                ? "bg-white/[0.08] text-zinc-200 border-white/[0.12]"
+                : "text-zinc-500 hover:text-zinc-300 border-transparent"
+            }`}
+          >
+            Terminal {isConsoleOpen ? "▼" : "▲"}
+          </button>
         </div>
       </div>
 
-      {/* TYPING INDICATOR */}
-      {activeTypingUsers.length > 0 && (
-        <div className="px-4 py-1 text-xs text-gray-500 bg-gray-50 border-b border-gray-200">
-          {activeTypingUsers.join(", ")} typing...
-        </div>
-      )}
-
-      {/* MONACO EDITOR */}
-      <div className="flex-1 border-b border-gray-200">
+      {/* MONACO CODE EDITOR */}
+      <div className="flex-1 relative overflow-hidden">
         <Editor
           height="100%"
           language={language}
-          theme="vs-light"
-          defaultValue={code} // ✅ IMPORTANT: Uncontrolled component prevents lag
+          value={code}
+          onChange={handleChange}
+          theme="vs-dark"
           onMount={(editor) => {
             editorRef.current = editor;
           }}
-          onChange={handleChange}
           options={{
-            fontSize: 14,
+            fontSize: 13.5,
+            fontFamily: "'JetBrains Mono', 'Fira Code', Consolas, monospace",
             minimap: { enabled: false },
-            automaticLayout: true,
+            lineNumbers: "on",
+            roundedSelection: true,
             scrollBeyondLastLine: false,
-            wordWrap: "on",
+            automaticLayout: true,
+            tabSize: 2,
+            padding: { top: 12, bottom: 12 },
+            renderLineHighlight: "all",
+            smoothScrolling: true,
+            cursorBlinking: "smooth",
           }}
         />
       </div>
 
-      {/* OUTPUT SECTION */}
-      <div className="h-44 border-t border-gray-200 bg-gray-50 flex flex-col">
-        <div className="flex items-center justify-between px-3 py-2 bg-white border-b border-gray-200 text-xs">
-          <span className="text-gray-600 font-medium">OUTPUT</span>
+      {/* CONSOLE DRAWER */}
+      {isConsoleOpen && (
+        <div className="h-44 border-t border-white/[0.08] bg-zinc-950/95 backdrop-blur-xl flex flex-col font-mono text-xs shadow-2xl">
+          <div className="h-8 px-4 flex items-center justify-between border-b border-white/[0.06] bg-zinc-900/40 text-zinc-400 select-none">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-emerald-400" />
+              <span className="text-[11px] uppercase tracking-wider text-zinc-400">Execution Output</span>
+            </div>
+            <button
+              onClick={() => setIsConsoleOpen(false)}
+              className="text-zinc-500 hover:text-zinc-300 text-[10px]"
+            >
+              Minimize ✕
+            </button>
+          </div>
 
-          <span className="flex items-center gap-1 text-green-600 font-medium">
-            <span
-              className={`w-2 h-2 rounded-full ${
-                loading ? "bg-yellow-500 animate-pulse" : "bg-green-500"
-              }`}
-            ></span>
-            {loading ? "Running" : "Ready"}
-          </span>
+          <div className="flex-1 p-4 overflow-y-auto text-zinc-300 whitespace-pre-wrap leading-relaxed select-text font-mono text-[12px]">
+            {formatOutput(output)}
+          </div>
         </div>
-
-        <div className="flex-1 overflow-y-auto p-3 text-gray-800 text-sm font-mono whitespace-pre-wrap">
-          {output ? formatOutput(output) : "No output yet..."}
-        </div>
-      </div>
+      )}
     </div>
   );
 }

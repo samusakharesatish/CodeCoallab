@@ -1,18 +1,26 @@
 package com.codecollab.controller;
 
-import org.springframework.stereotype.Controller; // 🔥 ADD THIS
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.handler.annotation.Payload;
-import org.springframework.messaging.handler.annotation.SendTo;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.stereotype.Controller;
 
 import java.util.Map;
 
-@Controller // 🔥 REQUIRED
+@Controller
 public class DrawController {
 
+    private final SimpMessagingTemplate messagingTemplate;
+
+    public DrawController(SimpMessagingTemplate messagingTemplate) {
+        this.messagingTemplate = messagingTemplate;
+    }
+
     @MessageMapping("/draw")
-    @SendTo("/topic/draw")
-    public Map<String, Object> handleDraw(@Payload Map<String, Object> payload) {
-        return payload;
+    public void handleDraw(@Payload Map<String, Object> payload) {
+        Object roomId = payload.get("roomId");
+        if (roomId != null) {
+            messagingTemplate.convertAndSend("/topic/draw/" + roomId.toString(), payload);
+        }
     }
 }

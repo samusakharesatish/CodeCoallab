@@ -25,8 +25,10 @@ export default function HomePage() {
   const [roomId, setRoomId] = useState("");
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userEmail, setUserEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [loading, setLoading] = useState(false);
   const [lastRoom, setLastRoom] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<"create" | "join">("create");
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -40,6 +42,7 @@ export default function HomePage() {
     try {
       const payload = JSON.parse(atob(token.split(".")[1]));
       setUserEmail(payload.sub);
+      setUsername(payload.username || payload.sub.split("@")[0]);
       setIsLoggedIn(true);
     } catch {
       localStorage.removeItem("token");
@@ -71,14 +74,14 @@ export default function HomePage() {
   const handleLogout = () => {
     localStorage.removeItem("token");
     localStorage.removeItem("lastRoom");
-    toast.success("Signed out successfully");
+    toast.success("Signed out safely");
     setTimeout(() => {
-      router.push("/");
-    }, 500);
+      window.location.href = "/";
+    }, 400);
   };
 
   const generateRoomId = () => {
-    const id = "room-" + Math.random().toString(36).substring(2, 8);
+    const id = "collab-" + Math.random().toString(36).substring(2, 8);
     setRoomId(id);
     toast.success("Room ID generated");
   };
@@ -87,12 +90,12 @@ export default function HomePage() {
     let cleanRoom = roomId.trim();
 
     if (!cleanRoom) {
-      cleanRoom = "room-" + Math.random().toString(36).substring(2, 8);
+      cleanRoom = "collab-" + Math.random().toString(36).substring(2, 8);
       setRoomId(cleanRoom);
     }
 
     if (!isValidRoomId(cleanRoom)) {
-      toast.error("Invalid Room ID. Use letters, numbers, and dashes only.");
+      toast.error("Invalid Room ID. Use letters, numbers, and hyphens.");
       return;
     }
 
@@ -101,14 +104,18 @@ export default function HomePage() {
     try {
       const token = localStorage.getItem("token");
       const payload = JSON.parse(atob(token!.split(".")[1]));
-
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
       const res = await fetch(`${apiUrl}/room/create`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
         body: JSON.stringify({
           roomId: cleanRoom,
           hostId: payload.sub,
+          hostUsername: payload.username || payload.sub,
+          language: "javascript",
         }),
       });
 
@@ -116,13 +123,14 @@ export default function HomePage() {
 
       if (!res.ok) {
         toast.error(typeof data === "string" ? data : "Failed to create room");
+        toast.error(typeof data === "string" ? data : "Failed to create room");
         return;
       }
 
-      toast.success("Room created successfully!");
+      toast.success("Workspace initialized!");
       goToRoom(data.roomId);
     } catch {
-      toast.error("Cannot connect to server. Please check backend status.");
+      toast.error("Cannot connect to server. Check backend status.");
     } finally {
       setLoading(false);
     }
@@ -133,26 +141,32 @@ export default function HomePage() {
 
     if (!cleanRoom) {
       toast.error("Please enter a Room ID to join");
+      toast.error("Please enter a Room ID to join");
       return;
     }
 
     setLoading(true);
 
     try {
+      const token = localStorage.getItem("token");
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
-      const res = await fetch(`${apiUrl}/room/exists/${cleanRoom}`);
+      const res = await fetch(`${apiUrl}/room/exists/${cleanRoom}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
 
       const data = await res.json();
 
       if (data === false) {
-        toast.error("Room does not exist. Please check the ID.");
+        toast.error("Room does not exist. Check the ID.");
         return;
       }
 
-      toast.success("Joining workspace...");
+      toast.success("Connecting to room...");
       goToRoom(cleanRoom);
     } catch {
-      toast.error("Cannot connect to server. Please check backend status.");
+      toast.error("Cannot connect to server. Check backend status.");
     } finally {
       setLoading(false);
     }
@@ -161,172 +175,223 @@ export default function HomePage() {
   if (!isLoggedIn) return null;
 
   return (
-    <div className="min-h-screen bg-[#070b14] text-slate-100 flex flex-col relative overflow-hidden selection:bg-indigo-500/30 font-sans">
-      {/* Background Decorative Ambient Glows */}
-      <div className="absolute top-[-10%] left-1/2 -translate-x-1/2 w-[700px] h-[500px] bg-indigo-600/15 rounded-full blur-[140px] pointer-events-none" />
-      <div className="absolute bottom-[-10%] right-[-10%] w-[500px] h-[500px] bg-purple-600/15 rounded-full blur-[140px] pointer-events-none" />
+    <div className="min-h-screen bg-[#09090b] text-zinc-100 flex flex-col relative overflow-x-hidden selection:bg-indigo-500/25">
+      {/* Background Lighting */}
+      <div className="pointer-events-none fixed inset-0 z-0">
+        <div className="absolute top-0 right-1/4 w-[500px] h-[300px] bg-indigo-600/10 rounded-full blur-[140px]" />
+        <div className="absolute bottom-10 left-10 w-[400px] h-[350px] bg-purple-600/10 rounded-full blur-[160px]" />
+      </div>
 
-      {/* Subtle Grid Pattern */}
-      <div
-        className="absolute inset-0 pointer-events-none opacity-20"
-        style={{
-          backgroundImage: `linear-gradient(to right, #334155 1px, transparent 1px), linear-gradient(to bottom, #334155 1px, transparent 1px)`,
-          backgroundSize: "40px 40px",
-        }}
-      />
+      <div className="relative z-10 flex flex-col min-h-screen">
+        {/* GLASS TOPBAR */}
+        <header className="sticky top-0 z-40 backdrop-blur-xl bg-zinc-950/60 border-b border-white/[0.06]">
+          <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <a href="/" className="flex items-center gap-2 group">
+                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-md border border-white/10 group-hover:scale-105 transition-transform">
+                  <span className="font-mono text-sm font-bold text-white">&lt;/&gt;</span>
+                </div>
+                <span className="font-semibold tracking-tight text-white text-base">CodeCollab</span>
+              </a>
+              <span className="text-zinc-600 font-mono text-xs">/</span>
+              <span className="text-xs font-mono text-zinc-400">Hub</span>
+            </div>
 
-      {/* ─── APP HEADER ─── */}
-      <header className="sticky top-0 z-50 backdrop-blur-xl bg-[#070b14]/80 border-b border-slate-800/80">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2.5 group">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-blue-500 p-0.5 shadow-md shadow-indigo-500/20 group-hover:shadow-indigo-500/40 transition-all">
-              <div className="w-full h-full bg-slate-950/80 rounded-[10px] flex items-center justify-center">
-                <Code2 className="w-4 h-4 text-indigo-400 group-hover:scale-110 transition-transform" />
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2.5 px-3 py-1.5 rounded-xl bg-zinc-900/60 border border-white/[0.06] backdrop-blur-md">
+                <div className="w-6 h-6 rounded-full bg-indigo-500/20 text-indigo-300 font-semibold text-xs flex items-center justify-center border border-indigo-400/30">
+                  {username.charAt(0).toUpperCase()}
+                </div>
+                <span className="text-xs text-zinc-300 font-medium hidden sm:inline">{username}</span>
               </div>
-            </div>
-            <span className="text-xl font-bold tracking-tight text-white">
-              Code<span className="text-indigo-400">Collab</span>
-            </span>
-          </Link>
 
-          <div className="flex items-center gap-4">
-            <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-900 border border-slate-800 text-xs text-slate-300">
-              <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <User className="w-3.5 h-3.5 text-slate-400" />
-              <span className="font-medium text-slate-200">{userEmail}</span>
+              <button
+                onClick={handleLogout}
+                className="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-400 hover:text-red-400 hover:bg-red-500/10 transition border border-transparent hover:border-red-500/20"
+              >
+                Sign Out
+              </button>
             </div>
-
-            <button
-              onClick={handleLogout}
-              className="px-3.5 py-1.5 rounded-xl border border-slate-800 bg-slate-900/80 hover:bg-slate-800 text-xs font-medium text-slate-300 hover:text-red-400 transition flex items-center gap-1.5 cursor-pointer"
-            >
-              <LogOut className="w-3.5 h-3.5" />
-              <span>Logout</span>
-            </button>
           </div>
-        </div>
-      </header>
+        </header>
 
-      {/* ─── MAIN CONTENT ─── */}
-      <main className="flex-1 flex items-center justify-center p-4 sm:p-6 lg:p-8 relative z-10">
-        <div className="w-full max-w-lg">
-          <div className="rounded-3xl bg-slate-900/80 border border-slate-800/90 shadow-2xl p-7 sm:p-10 backdrop-blur-xl transition-all">
-            {/* Header */}
-            <div className="text-center space-y-2 mb-8">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-xs font-semibold text-indigo-400 mb-1">
-                <Sparkles className="w-3.5 h-3.5" />
-                WORKSPACE DASHBOARD
-              </div>
-              <h2 className="text-2xl font-bold tracking-tight text-white">
-                Join or Create a Room
-              </h2>
-              <p className="text-slate-400 text-xs sm:text-sm max-w-sm mx-auto">
-                Collaborate in real-time with Monaco code editor, cloud execution & whiteboard.
-              </p>
-            </div>
+        {/* MAIN DASHBOARD (BENTO GRID) */}
+        <main className="flex-1 max-w-6xl w-full mx-auto px-6 py-10">
+          <div className="mb-8">
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">Workspace Hub</h1>
+            <p className="text-zinc-400 text-sm mt-1">Start a new pairing room or join your team's live session.</p>
+          </div>
 
-            {/* Room ID Input Box */}
-            <div className="space-y-4">
-              <div className="space-y-1.5">
-                <label className="block text-xs font-medium text-slate-300">
-                  Room Identifier
-                </label>
-                <div className="flex gap-2">
-                  <div className="relative flex-1 group">
-                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500 group-focus-within:text-indigo-400 transition-colors">
-                      <Terminal className="w-4 h-4" />
-                    </div>
+          {/* BENTO GRID CONTAINER */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+            
+            {/* CARD 1: MAIN ACTION (2 cols) */}
+            <div className="md:col-span-2 rounded-2xl bg-zinc-900/50 border border-white/[0.08] p-6 sm:p-8 backdrop-blur-2xl shadow-xl flex flex-col justify-between relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
+
+              <div>
+                {/* Segmented Control */}
+                <div className="inline-flex p-1 rounded-xl bg-zinc-950/70 border border-white/[0.06] mb-6">
+                  <button
+                    onClick={() => setActiveTab("create")}
+                    className={`px-4 py-1.5 rounded-lg text-xs font-medium transition ${
+                      activeTab === "create"
+                        ? "bg-white text-zinc-950 shadow-sm"
+                        : "text-zinc-400 hover:text-zinc-200"
+                    }`}
+                  >
+                    Create Workspace
+                  </button>
+                  <button
+                    onClick={() => setActiveTab("join")}
+                    className={`px-4 py-1.5 rounded-lg text-xs font-medium transition ${
+                      activeTab === "join"
+                        ? "bg-white text-zinc-950 shadow-sm"
+                        : "text-zinc-400 hover:text-zinc-200"
+                    }`}
+                  >
+                    Join with ID
+                  </button>
+                </div>
+
+                <div className="mb-6">
+                  <h2 className="text-lg font-semibold text-white mb-1">
+                    {activeTab === "create" ? "Initialize a new room" : "Enter room credentials"}
+                  </h2>
+                  <p className="text-zinc-400 text-xs">
+                    {activeTab === "create"
+                      ? "You will be assigned as the room host with join request authorization controls."
+                      : "The room host will receive your request to approve access."}
+                  </p>
+                </div>
+
+                {/* Input with Generator */}
+                <div className="space-y-3 mb-6">
+                  <label className="block text-xs font-medium text-zinc-300">Room Identifier</label>
+                  <div className="flex gap-2">
                     <input
                       type="text"
-                      placeholder="e.g. team-standup or room-xyz"
+                      placeholder="e.g. system-design-01"
                       value={roomId}
                       onChange={(e) => setRoomId(e.target.value)}
-                      className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-950/70 border border-slate-800 text-slate-100 placeholder-slate-500 text-sm font-mono outline-none transition-all focus:border-indigo-500/80 focus:ring-2 focus:ring-indigo-500/20 focus:bg-slate-950"
+                      className="flex-1 px-4 py-2.5 rounded-xl bg-zinc-950/80 border border-white/[0.08] text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/40 font-mono transition"
                     />
+                    {activeTab === "create" && (
+                      <button
+                        type="button"
+                        onClick={generateRoomId}
+                        title="Generate random room ID"
+                        className="px-3.5 py-2.5 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] text-zinc-200 transition font-mono text-xs flex items-center gap-1.5"
+                      >
+                        <span>🎲</span>
+                        <span className="hidden sm:inline text-xs">Random</span>
+                      </button>
+                    )}
                   </div>
-
-                  <button
-                    type="button"
-                    onClick={generateRoomId}
-                    title="Generate Random Room ID"
-                    aria-label="Generate Random Room ID"
-                    className="px-3.5 py-2.5 bg-slate-800/80 hover:bg-slate-700/80 text-slate-300 hover:text-white rounded-xl border border-slate-700/60 transition cursor-pointer flex items-center justify-center group"
-                  >
-                    <Dices className="w-4 h-4 text-indigo-400 group-hover:rotate-180 transition-transform duration-500" />
-                  </button>
                 </div>
               </div>
 
-              {/* Action Buttons */}
-              <div className="grid grid-cols-2 gap-3 pt-2">
-                <button
-                  onClick={joinRoom}
-                  disabled={loading}
-                  className="py-2.5 px-4 rounded-xl font-medium text-sm text-slate-200 bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700/80 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed hover:text-white"
-                >
-                  {loading ? (
-                    <Loader2 className="w-4 h-4 animate-spin text-slate-400" />
-                  ) : (
-                    <>
-                      <span>Join Room</span>
-                      <ArrowRight className="w-4 h-4 text-slate-400" />
-                    </>
-                  )}
-                </button>
+              {/* Action Button */}
+              <div>
+                {activeTab === "create" ? (
+                  <button
+                    onClick={createRoom}
+                    disabled={loading}
+                    className="w-full sm:w-auto px-7 py-3 rounded-xl text-sm font-semibold bg-white text-zinc-950 hover:bg-zinc-200 transition shadow-lg flex items-center justify-center gap-2 disabled:opacity-50"
+                  >
+                    {loading ? "Initializing..." : "Create & Launch →"}
+                  </button>
+                ) : (
+                  <button
+                    onClick={joinRoom}
+                    disabled={loading}
+                    className="w-full sm:w-auto px-7 py-3 rounded-xl text-sm font-semibold bg-indigo-600 hover:bg-indigo-500 text-white transition shadow-lg shadow-indigo-600/20 flex items-center justify-center gap-2 disabled:opacity-50"
+                  >
+                    {loading ? "Connecting..." : "Request to Join →"}
+                  </button>
+                )}
+              </div>
+            </div>
 
-                <button
-                  onClick={createRoom}
-                  disabled={loading}
-                  className="py-2.5 px-4 rounded-xl font-medium text-sm text-white bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 shadow-lg shadow-indigo-600/25 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
-                >
-                  {loading ? (
-                    <Loader2 className="w-4 h-4 animate-spin text-white" />
-                  ) : (
-                    <>
-                      <Plus className="w-4 h-4" />
-                      <span>Create Room</span>
-                    </>
-                  )}
-                </button>
+            {/* CARD 2: QUICK REJOIN (1 col) */}
+            <div className="rounded-2xl bg-zinc-900/50 border border-white/[0.08] p-6 backdrop-blur-2xl shadow-xl flex flex-col justify-between">
+              <div>
+                <span className="text-xs font-mono text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded border border-indigo-500/20">
+                  Recent Session
+                </span>
+                <h3 className="text-base font-semibold text-white mt-3 mb-1">Quick Reconnect</h3>
+                <p className="text-zinc-400 text-xs leading-relaxed">
+                  Resume your last active room with current code state preserved.
+                </p>
+
+                {lastRoom ? (
+                  <div className="mt-4 p-3.5 rounded-xl bg-zinc-950/80 border border-white/[0.06]">
+                    <div className="flex items-center justify-between text-xs mb-1.5">
+                      <span className="text-zinc-500 font-mono">Room ID:</span>
+                      <span className="text-emerald-400 font-mono text-[11px] flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                        Cached
+                      </span>
+                    </div>
+                    <p className="font-mono text-sm text-zinc-100 font-medium truncate">{lastRoom}</p>
+                  </div>
+                ) : (
+                  <div className="mt-4 p-4 rounded-xl bg-zinc-950/40 border border-white/[0.04] text-center text-xs text-zinc-500">
+                    No recent session found
+                  </div>
+                )}
               </div>
 
-              {/* Rejoin Last Room */}
               {lastRoom && (
-                <div className="pt-2">
-                  <button
-                    onClick={() => goToRoom(lastRoom)}
-                    className="w-full py-2.5 px-4 rounded-xl bg-indigo-950/40 hover:bg-indigo-950/70 border border-indigo-500/30 text-indigo-300 text-xs font-medium transition flex items-center justify-center gap-2 cursor-pointer group"
-                  >
-                    <RotateCcw className="w-3.5 h-3.5 text-indigo-400 group-hover:-rotate-90 transition-transform duration-300" />
-                    <span>Rejoin Recent Session: <b className="font-mono text-indigo-200">{lastRoom}</b></span>
-                  </button>
-                </div>
+                <button
+                  onClick={() => goToRoom(lastRoom)}
+                  className="w-full mt-4 py-2.5 rounded-xl text-xs font-medium bg-white/[0.08] hover:bg-white/[0.14] border border-white/[0.1] text-zinc-100 transition flex items-center justify-center gap-2"
+                >
+                  <span>Re-enter Room</span>
+                  <span className="font-mono text-[10px]">→</span>
+                </button>
               )}
             </div>
 
-            {/* Quick feature indicators */}
-            <div className="mt-8 pt-6 border-t border-slate-800/80 grid grid-cols-3 gap-2 text-center text-[11px] text-slate-400">
-              <div className="flex flex-col items-center gap-1">
-                <Zap className="w-3.5 h-3.5 text-indigo-400" />
-                <span>Low Latency</span>
+            {/* CARD 3: SECURITY PILL (1 col) */}
+            <div className="rounded-2xl bg-zinc-900/40 border border-white/[0.06] p-5 backdrop-blur-xl flex flex-col justify-between">
+              <div>
+                <span className="text-[11px] font-mono text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                  Host Protection
+                </span>
+                <h4 className="text-sm font-semibold text-white mt-3 mb-1">Zero-Trust Access</h4>
+                <p className="text-zinc-400 text-xs leading-relaxed">
+                  Room hosts maintain approval over every joining collaborator. Unapproved requests cannot observe code or whiteboard.
+                </p>
               </div>
-              <div className="flex flex-col items-center gap-1">
-                <Layers className="w-3.5 h-3.5 text-purple-400" />
-                <span>Multi-Cursor</span>
-              </div>
-              <div className="flex flex-col items-center gap-1">
-                <Shield className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Private Sandbox</span>
+              <div className="mt-4 text-[11px] text-zinc-500 font-mono flex items-center justify-between">
+                <span>Access: Guarded</span>
+                <span className="text-emerald-400">JWT Validated</span>
               </div>
             </div>
-          </div>
-        </div>
-      </main>
 
-      {/* Footer */}
-      <footer className="py-4 text-center text-xs text-slate-500 border-t border-slate-800/60 bg-[#050810]/50 backdrop-blur-md">
-        CodeCollab Studio • Real-time Multiplayer Engineering Environment
-      </footer>
+            {/* CARD 4: WORKSPACE CAPABILITIES (2 cols) */}
+            <div className="md:col-span-2 rounded-2xl bg-zinc-900/40 border border-white/[0.06] p-5 backdrop-blur-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div>
+                <span className="text-[11px] font-mono text-purple-400 bg-purple-500/10 px-2 py-0.5 rounded border border-purple-500/20">
+                  Unified Tools
+                </span>
+                <h4 className="text-sm font-semibold text-white mt-2 mb-1">Monaco Editor • Vector Canvas • Judge0</h4>
+                <p className="text-zinc-400 text-xs">
+                  Switch between coding and architecture sketching in real-time with isolated room communication.
+                </p>
+              </div>
+
+              <div className="flex gap-2">
+                <span className="px-2.5 py-1 rounded-lg bg-zinc-950/80 border border-white/[0.06] text-xs font-mono text-zinc-300">JS</span>
+                <span className="px-2.5 py-1 rounded-lg bg-zinc-950/80 border border-white/[0.06] text-xs font-mono text-zinc-300">PY</span>
+                <span className="px-2.5 py-1 rounded-lg bg-zinc-950/80 border border-white/[0.06] text-xs font-mono text-zinc-300">JAVA</span>
+              </div>
+            </div>
+
+          </div>
+        </main>
+      </div>
     </div>
   );
 }

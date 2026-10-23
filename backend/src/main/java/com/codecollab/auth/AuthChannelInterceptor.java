@@ -1,6 +1,6 @@
 package com.codecollab.auth;
 
-import org.springframework.beans.factory.annotation.Autowired;
+
 import org.springframework.lang.NonNull;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageChannel;
@@ -14,8 +14,11 @@ import java.security.Principal;
 @Component
 public class AuthChannelInterceptor implements ChannelInterceptor {
 
-    @Autowired
-    private JwtUtil jwtUtil;
+    private final JwtUtil jwtUtil;
+
+    public AuthChannelInterceptor(JwtUtil jwtUtil) {
+        this.jwtUtil = jwtUtil;
+    }
 
     @Override
     public Message<?> preSend(@NonNull Message<?> message, @NonNull MessageChannel channel) {
@@ -23,7 +26,6 @@ public class AuthChannelInterceptor implements ChannelInterceptor {
         StompHeaderAccessor accessor =
                 MessageHeaderAccessor.getAccessor(message, StompHeaderAccessor.class);
 
-        // ✅ Fix null pointer warning
         if (accessor != null && StompCommand.CONNECT.equals(accessor.getCommand())) {
 
             String authHeader = accessor.getFirstNativeHeader("Authorization");
@@ -31,11 +33,12 @@ public class AuthChannelInterceptor implements ChannelInterceptor {
             if (authHeader != null && authHeader.startsWith("Bearer ")) {
 
                 String token = authHeader.substring(7);
-                String email = jwtUtil.extractEmail(token);
 
-                Principal user = () -> email;
-
-                accessor.setUser(user);
+                if (jwtUtil.validateToken(token)) {
+                    String email = jwtUtil.extractEmail(token);
+                    Principal user = () -> email;
+                    accessor.setUser(user);
+                }
             }
         }
 

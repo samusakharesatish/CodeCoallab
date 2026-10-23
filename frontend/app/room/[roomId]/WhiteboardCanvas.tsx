@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-
 import { sendDraw } from "../../lib/socket";
 
 type Tool = "pen" | "rect" | "circle";
@@ -122,7 +121,10 @@ export default function WhiteboardCanvas({
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
     elementsRef.current.forEach((item) => renderItem(ctx, item));
-    Object.values(remoteStrokesRef.current).forEach((item) => renderItem(ctx, item));
+
+    Object.values(remoteStrokesRef.current).forEach((stroke) => {
+      renderItem(ctx, stroke);
+    });
 
     if (activeStrokeRef.current) {
       renderItem(ctx, activeStrokeRef.current);
@@ -133,25 +135,7 @@ export default function WhiteboardCanvas({
     }
   }, [renderItem]);
 
-  const getCanvasPoint = (e: React.MouseEvent<HTMLCanvasElement>): Point => {
-    const canvas = canvasRef.current;
-
-    if (!canvas) {
-      return { x: 0, y: 0 };
-    }
-
-    const rect = canvas.getBoundingClientRect();
-
-    return {
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top,
-    };
-  };
-
   const applyRemoteEvent = useCallback((data: DrawEventPayload) => {
-    if (data.roomId && data.roomId !== roomId) return;
-    if (data.userId === userId) return;
-
     if (data.type === "clear") {
       elementsRef.current = [];
       previewRef.current = null;
@@ -214,7 +198,7 @@ export default function WhiteboardCanvas({
       delete remoteStrokesRef.current[remoteUserId];
       redrawCanvas();
     }
-  }, [redrawCanvas, roomId, userId]);
+  }, [redrawCanvas]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -228,8 +212,8 @@ export default function WhiteboardCanvas({
 
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = "black";
+    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = "#f4f4f5"; // Crisp light stroke for dark mode
 
     ctxRef.current = ctx;
 
@@ -237,7 +221,7 @@ export default function WhiteboardCanvas({
     pendingEvents.current = [];
 
     redrawCanvas();
-  }, [applyRemoteEvent, redrawCanvas, roomId, userId]);
+  }, [applyRemoteEvent, redrawCanvas]);
 
   useEffect(() => {
     const handler = (e: Event) => {
@@ -252,16 +236,23 @@ export default function WhiteboardCanvas({
     };
 
     window.addEventListener("draw-event", handler);
+    return () => window.removeEventListener("draw-event", handler);
+  }, [applyRemoteEvent]);
 
-    return () => {
-      window.removeEventListener("draw-event", handler);
+  const getCanvasPoint = (e: React.MouseEvent<HTMLCanvasElement>): Point => {
+    const canvas = canvasRef.current;
+    if (!canvas) return { x: 0, y: 0 };
+
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top,
     };
-  }, [applyRemoteEvent, roomId, userId]);
+  };
 
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    const point = getCanvasPoint(e);
-
     setDrawing(true);
+    const point = getCanvasPoint(e);
 
     if (tool === "pen") {
       activeStrokeRef.current = {
@@ -339,14 +330,21 @@ export default function WhiteboardCanvas({
 
       sendDraw(roomId, {
         type: "end",
-        tool,
         userId,
       });
       return;
     }
 
-    if (previewRef.current) {
-      const finalizedShape = previewRef.current;
+    const start = shapeStartRef.current;
+    const preview = previewRef.current;
+
+    if (start && preview) {
+      const finalizedShape: Shape = {
+        tool,
+        start,
+        end: preview.end,
+      };
+
       elementsRef.current.push(finalizedShape);
 
       sendDraw(roomId, {
@@ -379,57 +377,68 @@ export default function WhiteboardCanvas({
   };
 
   return (
-    <div className="flex-1 flex flex-col bg-white">
-      <div className="flex gap-2 p-3 border-b bg-gray-100">
+    <div className="flex-1 flex flex-col bg-[#09090b] relative overflow-hidden select-none">
+      {/* FLOATING GLASS DOCK TOOLBAR */}
+      <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5 p-1.5 rounded-2xl bg-zinc-900/80 border border-white/[0.08] backdrop-blur-2xl shadow-2xl">
         <button
           onClick={() => setTool("pen")}
-          className={`px-3 py-1 rounded ${
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition ${
             tool === "pen"
-              ? "bg-indigo-500 text-white"
-              : "bg-white text-gray-800 border border-gray-200"
+              ? "bg-white text-zinc-950 shadow-md font-semibold"
+              : "text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.05]"
           }`}
         >
-          Pen
+          <span>✏️</span>
+          <span>Pen</span>
         </button>
 
         <button
           onClick={() => setTool("rect")}
-          className={`px-3 py-1 rounded ${
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition ${
             tool === "rect"
-              ? "bg-indigo-500 text-white"
-              : "bg-white text-gray-800 border border-gray-200"
+              ? "bg-white text-zinc-950 shadow-md font-semibold"
+              : "text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.05]"
           }`}
         >
-          Rect
+          <span>▭</span>
+          <span>Rectangle</span>
         </button>
 
         <button
           onClick={() => setTool("circle")}
-          className={`px-3 py-1 rounded ${
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition ${
             tool === "circle"
-              ? "bg-indigo-500 text-white"
-              : "bg-white text-gray-800 border border-gray-200"
+              ? "bg-white text-zinc-950 shadow-md font-semibold"
+              : "text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.05]"
           }`}
         >
-          Circle
+          <span>◯</span>
+          <span>Circle</span>
         </button>
+
+        <div className="h-4 w-px bg-white/[0.1] mx-1" />
 
         <button
           onClick={clearCanvas}
-          className="ml-auto px-3 py-1 rounded bg-red-500 text-white"
+          className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-medium text-zinc-400 hover:text-red-400 hover:bg-red-500/10 transition"
+          title="Clear Whiteboard"
         >
-          Clear
+          <span>✕</span>
+          <span className="hidden sm:inline">Clear</span>
         </button>
       </div>
 
-      <canvas
-        ref={canvasRef}
-        className="flex-1 cursor-crosshair"
-        onMouseDown={startDrawing}
-        onMouseMove={draw}
-        onMouseUp={stopDrawing}
-        onMouseLeave={stopDrawing}
-      />
+      {/* CANVAS WITH DOT-GRID BACKGROUND */}
+      <div className="flex-1 w-full h-full bg-dot-grid relative">
+        <canvas
+          ref={canvasRef}
+          className="w-full h-full cursor-crosshair block"
+          onMouseDown={startDrawing}
+          onMouseMove={draw}
+          onMouseUp={stopDrawing}
+          onMouseLeave={stopDrawing}
+        />
+      </div>
     </div>
   );
 }

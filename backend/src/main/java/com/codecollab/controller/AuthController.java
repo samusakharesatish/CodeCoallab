@@ -6,7 +6,6 @@ import com.codecollab.auth.dto.LoginRequest;
 import com.codecollab.auth.dto.RegisterRequest;
 import com.codecollab.model.User;
 
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -18,13 +17,14 @@ import java.util.Optional;
 @CrossOrigin("*")
 public class AuthController {
 
-    @Autowired
-    private UserRepository repo;
-
-    @Autowired
-    private JwtUtil jwtUtil;
-
+    private final UserRepository repo;
+    private final JwtUtil jwtUtil;
     private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
+
+    public AuthController(UserRepository repo, JwtUtil jwtUtil) {
+        this.repo = repo;
+        this.jwtUtil = jwtUtil;
+    }
 
     // ✅ REGISTER
     @PostMapping("/register")
