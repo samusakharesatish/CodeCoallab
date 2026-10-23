@@ -1,9 +1,27 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
+import {
+  Code2,
+  Plus,
+  ArrowRight,
+  Sparkles,
+  Dices,
+  RotateCcw,
+  LogOut,
+  User,
+  Shield,
+  Zap,
+  Terminal,
+  Layers,
+  Loader2
+} from "lucide-react";
 
 export default function HomePage() {
+  const router = useRouter();
   const [roomId, setRoomId] = useState("");
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userEmail, setUserEmail] = useState("");
@@ -16,8 +34,8 @@ export default function HomePage() {
     const token = localStorage.getItem("token");
 
     if (!token) {
-      toast.error("Please login first");
-      window.location.href = "/login";
+      toast.error("Please log in to continue");
+      router.push("/login");
       return;
     }
 
@@ -28,9 +46,9 @@ export default function HomePage() {
       setIsLoggedIn(true);
     } catch {
       localStorage.removeItem("token");
-      window.location.href = "/login";
+      router.push("/login");
     }
-  }, []);
+  }, [router]);
 
   useEffect(() => {
     const syncRoom = () => {
@@ -46,7 +64,7 @@ export default function HomePage() {
   const goToRoom = (room: string) => {
     localStorage.setItem("lastRoom", room);
     setLastRoom(room);
-    window.location.href = `/room/${room}`;
+    router.push(`/room/${room}`);
   };
 
   const isValidRoomId = (id: string) => {
@@ -65,7 +83,7 @@ export default function HomePage() {
   const generateRoomId = () => {
     const id = "collab-" + Math.random().toString(36).substring(2, 8);
     setRoomId(id);
-    toast.success("Room ID generated 🎲");
+    toast.success("Room ID generated");
   };
 
   const createRoom = async () => {
@@ -105,12 +123,12 @@ export default function HomePage() {
 
       if (!res.ok) {
         toast.error(typeof data === "string" ? data : "Failed to create room");
+        toast.error(typeof data === "string" ? data : "Failed to create room");
         return;
       }
 
       toast.success("Workspace initialized!");
       goToRoom(data.roomId);
-
     } catch {
       toast.error("Cannot connect to server. Check backend status.");
     } finally {
@@ -122,6 +140,7 @@ export default function HomePage() {
     const cleanRoom = roomId.trim();
 
     if (!cleanRoom) {
+      toast.error("Please enter a Room ID to join");
       toast.error("Please enter a Room ID to join");
       return;
     }
@@ -146,7 +165,6 @@ export default function HomePage() {
 
       toast.success("Connecting to room...");
       goToRoom(cleanRoom);
-
     } catch {
       toast.error("Cannot connect to server. Check backend status.");
     } finally {
