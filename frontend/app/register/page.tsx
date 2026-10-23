@@ -3,30 +3,12 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
-import {
-  Code2,
-  User,
-  Mail,
-  Lock,
-  Eye,
-  EyeOff,
-  ArrowRight,
-  Loader2,
-  CheckCircle2,
-  Zap,
-  Users,
-  ShieldCheck,
-  Terminal,
-  Sparkles
-} from "lucide-react";
 
 export default function RegisterPage() {
-  const router = useRouter();
   const router = useRouter();
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -71,7 +53,6 @@ export default function RegisterPage() {
 
       if (!res.ok) {
         toast.error(data || "Registration failed", { id: loadingToast });
-        toast.error(data || "Registration failed", { id: loadingToast });
         return;
       }
 
@@ -88,23 +69,6 @@ export default function RegisterPage() {
       setLoading(false);
     }
   };
-
-  // Password strength calculation
-  const getPasswordStrength = () => {
-    if (!password) return { score: 0, label: "", color: "bg-slate-700" };
-    let score = 0;
-    if (password.length >= 6) score += 1;
-    if (/[A-Z]/.test(password)) score += 1;
-    if (/[0-9]/.test(password)) score += 1;
-    if (/[^A-Za-z0-9]/.test(password)) score += 1;
-
-    if (score <= 1) return { score: 25, label: "Weak", color: "bg-rose-500" };
-    if (score === 2) return { score: 50, label: "Fair", color: "bg-amber-500" };
-    if (score === 3) return { score: 75, label: "Good", color: "bg-blue-500" };
-    return { score: 100, label: "Strong", color: "bg-emerald-500" };
-  };
-
-  const strength = getPasswordStrength();
 
   return (
     <div className="min-h-screen bg-[#09090b] text-zinc-100 flex flex-col justify-center items-center px-4 relative overflow-hidden">

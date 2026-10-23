@@ -3,31 +3,13 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
-import {
-  Code2,
-  Mail,
-  Lock,
-  Eye,
-  EyeOff,
-  ArrowRight,
-  Loader2,
-  CheckCircle2,
-  Zap,
-  Users,
-  ShieldCheck,
-  Terminal,
-  Sparkles
-} from "lucide-react";
 
 export default function LoginPage() {
-  const router = useRouter();
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [rememberMe, setRememberMe] = useState(true);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -39,7 +21,6 @@ export default function LoginPage() {
 
     try {
       setLoading(true);
-      const loadingToast = toast.loading("Authenticating...");
       const loadingToast = toast.loading("Authenticating...");
 
       const res = await fetch(
@@ -61,7 +42,6 @@ export default function LoginPage() {
       }
 
       if (!res.ok) {
-        toast.error(data || "Invalid credentials", { id: loadingToast });
         toast.error(data || "Invalid credentials", { id: loadingToast });
         return;
       }
