@@ -16,13 +16,17 @@ export default function EditorPanel({
   typingUsers,
   output,
   isRemote,
+  language: propLanguage,
+  setLanguage: propSetLanguage,
 }: any) {
   const editorRef = useRef<any>(null);
   const typingTimeout = useRef<NodeJS.Timeout | null>(null);
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
 
   const lastAcknowledgedCode = useRef(code);
-  const [language, setLanguage] = useState("javascript");
+  const [internalLanguage, setInternalLanguage] = useState("javascript");
+  const language = propLanguage || internalLanguage;
+  const setLanguage = propSetLanguage || setInternalLanguage;
   const [loading, setLoading] = useState(false);
   const [isConsoleOpen, setIsConsoleOpen] = useState(true);
 

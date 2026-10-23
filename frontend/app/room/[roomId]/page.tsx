@@ -31,6 +31,12 @@ type TypingEventPayload = { userId: string; isTyping: boolean };
 type LanguageEventPayload = { language?: string };
 type RunEventPayload = { output?: string };
 
+type RoomUser = {
+  userId: string;
+  username: string;
+  joinedAt?: string;
+};
+
 type JoinRequest = {
   roomId: string;
   userId: string;
@@ -46,13 +52,14 @@ export default function RoomPage() {
   const roomIdStr = typeof roomId === "string" ? roomId : "";
 
   const [code, setCode] = useState("");
+  const [language, setLanguage] = useState("javascript");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [typingUsers, setTypingUsers] = useState<Set<string>>(new Set());
   const [userId, setUserId] = useState<string | null>(null);
   const [username, setUsername] = useState<string | null>(null);
   const [output, setOutput] = useState("");
   const [sessionId, setSessionId] = useState("");
-  const [onlineUsers, setOnlineUsers] = useState<string[]>([]);
+  const [onlineUsers, setOnlineUsers] = useState<RoomUser[]>([]);
   const [view, setView] = useState<RoomView>("editor");
 
   const [isChatOpen, setIsChatOpen] = useState(false);
@@ -106,33 +113,32 @@ export default function RoomPage() {
     if (!roomIdStr || !userId) return;
 
     const checkHost = async () => {
-      const token = localStorage.getItem("token");
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/room/${roomIdStr}`,
-        {
+      try {
+        const token = localStorage.getItem("token");
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+        const res = await fetch(`${apiUrl}/room/${roomIdStr}`, {
           headers: {
             Authorization: `Bearer ${token}`,
           },
-        }
-      );
-      if (!res.ok) return;
-      const data = await res.json();
+        });
+        if (!res.ok) return;
+        const data = await res.json();
 
-      if (String(data.hostId) === String(userId)) {
-        setIsHost(true);
-        setIsApproved(true);
-      } else {
-        await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/join/request`,
-          {
+        if (String(data.hostId) === String(userId)) {
+          setIsHost(true);
+          setIsApproved(true);
+        } else {
+          await fetch(`${apiUrl}/join/request`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
               Authorization: `Bearer ${token}`,
             },
             body: JSON.stringify({ roomId: roomIdStr, userId, username }),
-          }
-        );
+          });
+        }
+      } catch (err) {
+        console.warn("Check host network error:", err);
       }
     };
 
@@ -144,25 +150,30 @@ export default function RoomPage() {
     if (!userId || isHost || isApproved) return;
 
     const interval = setInterval(async () => {
-      const token = localStorage.getItem("token");
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/join/status/${roomIdStr}/${userId}`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
-      if (!res.ok) return;
-      const data = await res.json();
+      try {
+        const token = localStorage.getItem("token");
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+        const res = await fetch(
+          `${apiUrl}/join/status/${roomIdStr}/${userId}`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
+        if (!res.ok) return;
+        const data = await res.json();
 
-      if (data.status === "APPROVED") {
-        setIsApproved(true);
-        toast.success("Host approved your join request!");
-        clearInterval(interval);
-      } else if (data.status === "REJECTED") {
-        toast.error("Host rejected your join request.");
-        clearInterval(interval);
+        if (data.status === "APPROVED") {
+          setIsApproved(true);
+          toast.success("Host approved your join request!");
+          clearInterval(interval);
+        } else if (data.status === "REJECTED") {
+          toast.error("Host rejected your join request.");
+          clearInterval(interval);
+        }
+      } catch (err) {
+        // Gracefully ignore temporary network hiccups while server boots
       }
     }, 3000);
 
@@ -171,18 +182,23 @@ export default function RoomPage() {
 
   /* ================= HOST REQUEST LIST ================= */
   const fetchRequests = async () => {
-    const token = localStorage.getItem("token");
-    const res = await fetch(
-      `${process.env.NEXT_PUBLIC_API_URL}/join/pending/${roomIdStr}`,
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      }
-    );
-    if (!res.ok) return;
-    const data: JoinRequest[] = await res.json();
-    setRequests(data);
+    try {
+      const token = localStorage.getItem("token");
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+      const res = await fetch(
+        `${apiUrl}/join/pending/${roomIdStr}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+      if (!res.ok) return;
+      const data: JoinRequest[] = await res.json();
+      setRequests(data);
+    } catch (err) {
+      // Gracefully ignore polling drops
+    }
   };
 
   useEffect(() => {
@@ -193,29 +209,39 @@ export default function RoomPage() {
   }, [isHost]);
 
   const approveUser = async (r: JoinRequest) => {
-    const token = localStorage.getItem("token");
-    await fetch(`${process.env.NEXT_PUBLIC_API_URL}/join/approve`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify(r),
-    });
-    fetchRequests();
+    try {
+      const token = localStorage.getItem("token");
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+      await fetch(`${apiUrl}/join/approve`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(r),
+      });
+      fetchRequests();
+    } catch (err) {
+      toast.error("Failed to approve user");
+    }
   };
 
   const rejectUser = async (r: JoinRequest) => {
-    const token = localStorage.getItem("token");
-    await fetch(`${process.env.NEXT_PUBLIC_API_URL}/join/reject`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify(r),
-    });
-    fetchRequests();
+    try {
+      const token = localStorage.getItem("token");
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+      await fetch(`${apiUrl}/join/reject`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(r),
+      });
+      fetchRequests();
+    } catch (err) {
+      toast.error("Failed to reject user");
+    }
   };
 
   /* ================= SOCKET ================= */
@@ -224,6 +250,7 @@ export default function RoomPage() {
 
     connectSocket(roomIdStr, {
       userId,
+      username,
       sessionId,
 
       onDraw: (data: DrawEventPayload) => {
@@ -263,15 +290,19 @@ export default function RoomPage() {
       },
 
       onLanguage: (data: LanguageEventPayload) => {
-        console.log("Language:", data.language);
+        if (data?.language) {
+          setLanguage(data.language);
+        }
       },
 
       onRun: (data: RunEventPayload) => {
         setOutput(data.output ?? "");
       },
 
-      onUsers: (data: string[]) => {
-        setOnlineUsers([...data]);
+      onUsers: (data: RoomUser[]) => {
+        if (Array.isArray(data)) {
+          setOnlineUsers(data);
+        }
       },
 
       onView: (data: ViewSyncPayload) => {
@@ -279,7 +310,7 @@ export default function RoomPage() {
         setView(data.view);
       },
     });
-  }, [roomIdStr, sessionId, userId, isApproved]);
+  }, [roomIdStr, sessionId, userId, username, isApproved]);
 
   /* ================= FETCH ROOM ================= */
   useEffect(() => {
@@ -308,6 +339,9 @@ export default function RoomPage() {
 
         if (data !== "EMPTY") {
           setCode(data.code || "");
+          if (data.language) {
+            setLanguage(data.language);
+          }
           setMessages(data.messages || []);
         }
       } catch (err) {
@@ -378,9 +412,27 @@ export default function RoomPage() {
           </button>
 
           {/* Active Participants */}
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-mono">
+          <div
+            className="group relative flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-mono cursor-pointer"
+            title={onlineUsers.map((u) => u.username || u.userId).join(", ")}
+          >
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
             <span>{onlineUsers.length > 0 ? onlineUsers.length : 1} active</span>
+
+            {/* Hover Tooltip with online user list */}
+            {onlineUsers.length > 0 && (
+              <div className="absolute top-8 left-0 hidden group-hover:flex flex-col gap-1 p-2 bg-zinc-900 border border-white/10 rounded-xl shadow-2xl z-50 text-[11px] min-w-[140px] pointer-events-none backdrop-blur-xl">
+                <span className="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold border-b border-white/[0.06] pb-1">
+                  Online Users
+                </span>
+                {onlineUsers.map((u, i) => (
+                  <div key={u.userId || i} className="flex items-center gap-1.5 text-zinc-300">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
+                    <span className="truncate">{u.username || u.userId}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
@@ -506,6 +558,8 @@ export default function RoomPage() {
               typingUsers={typingUsers}
               isRemote={isRemote}
               output={output}
+              language={language}
+              setLanguage={setLanguage}
             />
           ) : (
             <WhiteboardCanvas roomId={roomIdStr} userId={userId} />

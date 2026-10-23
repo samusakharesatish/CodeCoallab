@@ -9,6 +9,7 @@ import org.springframework.messaging.simp.SimpMessagingTemplate;
 
 import com.codecollab.model.ChatMessage;
 import com.codecollab.model.RunResponse;
+import com.codecollab.service.RedisService;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -22,14 +23,24 @@ public class CodeExecutionController {
     private static final String API_URL = "https://ce.judge0.com/submissions?base64_encoded=false&wait=true";
 
     private final SimpMessagingTemplate messagingTemplate;
+    private final RedisService redisService;
 
-    public CodeExecutionController(SimpMessagingTemplate messagingTemplate) {
+    public CodeExecutionController(SimpMessagingTemplate messagingTemplate, RedisService redisService) {
         this.messagingTemplate = messagingTemplate;
+        this.redisService = redisService;
     }
 
-    // ✅ REST API RUN
+    // ✅ REST API RUN (WITH REDIS RATE LIMITING)
     @PostMapping("/run")
     public ResponseEntity<?> runCode(@RequestBody Map<String, Object> request) {
+
+        String identifier = request.getOrDefault("userId", "anonymous").toString();
+
+        // 🛡️ Redis Rate Limiting: Max 5 runs per 60 seconds
+        if (redisService.isRateLimited("coderun:" + identifier, 5, 60)) {
+            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                    .body(Map.of("error", "Rate limit exceeded. Max 5 runs per minute."));
+        }
 
         RestTemplate restTemplate = new RestTemplate();
 
@@ -40,7 +51,7 @@ public class CodeExecutionController {
         RequestEntity<Map<String, Object>> requestEntity =
                 RequestEntity
                         .post(API_URL)
-                        .contentType(Objects.requireNonNull(MediaType.APPLICATION_JSON)) // ✅ FIXED
+                        .contentType(Objects.requireNonNull(MediaType.APPLICATION_JSON))
                         .body(body);
 
         ResponseEntity<String> response =
@@ -49,11 +60,21 @@ public class CodeExecutionController {
         return ResponseEntity.ok(response.getBody());
     }
 
-    // 🔥 WebSocket RUN (REAL-TIME)
+    // 🔥 WebSocket RUN (REAL-TIME WITH REDIS RATE LIMITING)
     @MessageMapping("/run")
     public void runCodeWS(ChatMessage message) {
 
         try {
+            String identifier = message.getUserId() != null ? message.getUserId() : message.getRoomId();
+
+            // 🛡️ Redis Rate Limiting: Max 5 runs per 60 seconds
+            if (redisService.isRateLimited("coderun:" + identifier, 5, 60)) {
+                messagingTemplate.convertAndSend(
+                        "/topic/run/" + message.getRoomId(),
+                        new RunResponse("⏳ Rate limit exceeded: Maximum 5 runs per minute. Please wait.")
+                );
+                return;
+            }
 
             RestTemplate restTemplate = new RestTemplate();
 
@@ -64,7 +85,7 @@ public class CodeExecutionController {
             RequestEntity<Map<String, Object>> requestEntity =
                     RequestEntity
                             .post(API_URL)
-                            .contentType(Objects.requireNonNull(MediaType.APPLICATION_JSON)) // ✅ FIXED
+                            .contentType(Objects.requireNonNull(MediaType.APPLICATION_JSON))
                             .body(body);
 
             ResponseEntity<String> response =
@@ -79,7 +100,7 @@ public class CodeExecutionController {
         } catch (Exception e) {
             messagingTemplate.convertAndSend(
                     "/topic/run/" + message.getRoomId(),
-                    new RunResponse("Error running code ❌")
+                    new RunResponse("Error running code ❌: " + e.getMessage())
             );
         }
     }

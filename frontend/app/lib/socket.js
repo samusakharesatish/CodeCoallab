@@ -28,6 +28,7 @@ export const connectSocket = (roomId, handlers) => {
           body: JSON.stringify({
             roomId,
             userId: handlers.userId, // real user
+            username: handlers.username || handlers.userId,
             sessionId: handlers.sessionId, // unique tab
           }),
         });

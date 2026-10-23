@@ -96,6 +96,8 @@ export default function HomePage() {
         body: JSON.stringify({
           roomId: cleanRoom,
           hostId: payload.sub,
+          hostUsername: payload.username || payload.sub,
+          language: "javascript",
         }),
       });
 
