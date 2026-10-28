@@ -11,6 +11,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
 
 @RestController
@@ -79,16 +81,69 @@ public class AuthController {
 
             User user = optionalUser.get();
 
-            // ✅ Generate JWT
-            String token = jwtUtil.generateToken(
+            // ✅ Generate JWT Access and Refresh Tokens
+            String accessToken = jwtUtil.generateAccessToken(
+                    user.getEmail(),
+                    user.getUsername()
+            );
+            String refreshToken = jwtUtil.generateRefreshToken(
                     user.getEmail(),
                     user.getUsername()
             );
 
-            return ResponseEntity.ok(token);
+            Map<String, String> response = new HashMap<>();
+            response.put("accessToken", accessToken);
+            response.put("refreshToken", refreshToken);
+            response.put("token", accessToken); // Backwards compatibility
+
+            return ResponseEntity.ok(response);
 
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Login failed");
+        }
+    }
+
+    // ✅ REFRESH TOKEN
+    @PostMapping("/refresh")
+    public ResponseEntity<?> refresh(@RequestBody(required = false) Map<String, String> req) {
+        try {
+            if (req == null || !req.containsKey("refreshToken") || req.get("refreshToken") == null || req.get("refreshToken").isBlank()) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("error", "Refresh token is required"));
+            }
+
+            String refreshToken = req.get("refreshToken").trim();
+
+            if (!jwtUtil.validateRefreshToken(refreshToken)) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("error", "Invalid or expired refresh token"));
+            }
+
+            String email = jwtUtil.extractEmail(refreshToken);
+            String username = jwtUtil.extractUsername(refreshToken);
+
+            if (email == null) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("error", "Invalid token claims"));
+            }
+
+            Optional<User> optionalUser = repo.findByEmail(email);
+            if (optionalUser.isEmpty()) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("error", "User not found"));
+            }
+
+            User user = optionalUser.get();
+            String resolvedUsername = user.getUsername() != null ? user.getUsername() : username;
+
+            // Generate fresh pair
+            String newAccessToken = jwtUtil.generateAccessToken(user.getEmail(), resolvedUsername);
+            String newRefreshToken = jwtUtil.generateRefreshToken(user.getEmail(), resolvedUsername);
+
+            Map<String, String> response = new HashMap<>();
+            response.put("accessToken", newAccessToken);
+            response.put("refreshToken", newRefreshToken);
+            response.put("token", newAccessToken);
+
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("error", "Token refresh failed"));
         }
     }
 }

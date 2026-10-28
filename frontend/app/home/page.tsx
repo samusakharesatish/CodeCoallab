@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
+import { apiFetch } from "../lib/api";
 import {
   Code2,
   Plus,
@@ -17,7 +18,10 @@ import {
   Zap,
   Terminal,
   Layers,
-  Loader2
+  Loader2,
+  Copy,
+  Check,
+  Link2
 } from "lucide-react";
 
 export default function HomePage() {
@@ -29,6 +33,9 @@ export default function HomePage() {
   const [loading, setLoading] = useState(false);
   const [lastRoom, setLastRoom] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"create" | "join">("create");
+  const [copiedRecent, setCopiedRecent] = useState(false);
+  const [copiedInput, setCopiedInput] = useState(false);
+  const [navigatingRoom, setNavigatingRoom] = useState<string | null>(null);
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -41,6 +48,15 @@ export default function HomePage() {
 
     try {
       const payload = JSON.parse(atob(token.split(".")[1]));
+      if (payload.exp && payload.exp * 1000 < Date.now()) {
+        const refreshToken = localStorage.getItem("refreshToken");
+        if (!refreshToken) {
+          localStorage.removeItem("token");
+          toast.error("Session expired. Please log in again.");
+          router.push("/login");
+          return;
+        }
+      }
       setUserEmail(payload.sub);
       setUsername(payload.username || payload.sub.split("@")[0]);
       setIsLoggedIn(true);
@@ -64,7 +80,39 @@ export default function HomePage() {
   const goToRoom = (room: string) => {
     localStorage.setItem("lastRoom", room);
     setLastRoom(room);
+    setNavigatingRoom(room);
     router.push(`/room/${room}`);
+  };
+
+  const copyRoomLink = async (room: string, source: "recent" | "input" = "input") => {
+    const cleanRoom = room.trim();
+    if (!cleanRoom) return;
+
+    const inviteUrl = `${window.location.origin}/room/${cleanRoom}`;
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(inviteUrl);
+      } else {
+        const textArea = document.createElement("textarea");
+        textArea.value = inviteUrl;
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textArea);
+      }
+
+      if (source === "recent") {
+        setCopiedRecent(true);
+        setTimeout(() => setCopiedRecent(false), 2000);
+      } else {
+        setCopiedInput(true);
+        setTimeout(() => setCopiedInput(false), 2000);
+      }
+
+      toast.success("Room invite link copied!");
+    } catch {
+      toast.error("Failed to copy link");
+    }
   };
 
   const isValidRoomId = (id: string) => {
@@ -73,6 +121,7 @@ export default function HomePage() {
 
   const handleLogout = () => {
     localStorage.removeItem("token");
+    localStorage.removeItem("refreshToken");
     localStorage.removeItem("lastRoom");
     toast.success("Signed out safely");
     setTimeout(() => {
@@ -80,8 +129,15 @@ export default function HomePage() {
     }, 400);
   };
 
+  const generateMeetStyleId = () => {
+    const chars = "abcdefghijklmnopqrstuvwxyz";
+    const getRandom = (len: number) =>
+      Array.from({ length: len }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
+    return `${getRandom(3)}-${getRandom(4)}-${getRandom(3)}`;
+  };
+
   const generateRoomId = () => {
-    const id = "collab-" + Math.random().toString(36).substring(2, 8);
+    const id = generateMeetStyleId();
     setRoomId(id);
     toast.success("Room ID generated");
   };
@@ -90,7 +146,7 @@ export default function HomePage() {
     let cleanRoom = roomId.trim();
 
     if (!cleanRoom) {
-      cleanRoom = "collab-" + Math.random().toString(36).substring(2, 8);
+      cleanRoom = generateMeetStyleId();
       setRoomId(cleanRoom);
     }
 
@@ -104,12 +160,10 @@ export default function HomePage() {
     try {
       const token = localStorage.getItem("token");
       const payload = JSON.parse(atob(token!.split(".")[1]));
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
-      const res = await fetch(`${apiUrl}/room/create`, {
+      const res = await apiFetch("/room/create", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           roomId: cleanRoom,
@@ -119,11 +173,17 @@ export default function HomePage() {
         }),
       });
 
+      if (res.status === 401 || res.status === 403) {
+        toast.error("Session expired. Please log in again.");
+        setLoading(false);
+        return;
+      }
+
       const data = await res.json();
 
       if (!res.ok) {
-        toast.error(typeof data === "string" ? data : "Failed to create room");
-        toast.error(typeof data === "string" ? data : "Failed to create room");
+        toast.error(typeof data === "string" ? data : (data?.error || data?.message || "Failed to create room"));
+        setLoading(false);
         return;
       }
 
@@ -131,7 +191,6 @@ export default function HomePage() {
       goToRoom(data.roomId);
     } catch {
       toast.error("Cannot connect to server. Check backend status.");
-    } finally {
       setLoading(false);
     }
   };
@@ -141,25 +200,25 @@ export default function HomePage() {
 
     if (!cleanRoom) {
       toast.error("Please enter a Room ID to join");
-      toast.error("Please enter a Room ID to join");
       return;
     }
 
     setLoading(true);
 
     try {
-      const token = localStorage.getItem("token");
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
-      const res = await fetch(`${apiUrl}/room/exists/${cleanRoom}`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const res = await apiFetch(`/room/exists/${cleanRoom}`);
+
+      if (res.status === 401 || res.status === 403) {
+        toast.error("Session expired. Please log in again.");
+        setLoading(false);
+        return;
+      }
 
       const data = await res.json();
 
       if (data === false) {
         toast.error("Room does not exist. Check the ID.");
+        setLoading(false);
         return;
       }
 
@@ -167,7 +226,6 @@ export default function HomePage() {
       goToRoom(cleanRoom);
     } catch {
       toast.error("Cannot connect to server. Check backend status.");
-    } finally {
       setLoading(false);
     }
   };
@@ -271,9 +329,9 @@ export default function HomePage() {
                   <div className="flex gap-2">
                     <input
                       type="text"
-                      placeholder="e.g. system-design-01"
+                      placeholder="e.g. dvk-mrbp-qtz"
                       value={roomId}
-                      onChange={(e) => setRoomId(e.target.value)}
+                      onChange={(e) => setRoomId(e.target.value.toLowerCase())}
                       className="flex-1 px-4 py-2.5 rounded-xl bg-zinc-950/80 border border-white/[0.08] text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/40 font-mono transition"
                     />
                     {activeTab === "create" && (
@@ -281,10 +339,30 @@ export default function HomePage() {
                         type="button"
                         onClick={generateRoomId}
                         title="Generate random room ID"
-                        className="px-3.5 py-2.5 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] text-zinc-200 transition font-mono text-xs flex items-center gap-1.5"
+                        className="px-3.5 py-2.5 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] text-zinc-200 transition font-mono text-xs flex items-center gap-1.5 shrink-0"
                       >
                         <span>🎲</span>
                         <span className="hidden sm:inline text-xs">Random</span>
+                      </button>
+                    )}
+                    {roomId.trim() && (
+                      <button
+                        type="button"
+                        onClick={() => copyRoomLink(roomId, "input")}
+                        title="Copy invite link"
+                        className="px-3 py-2.5 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] text-zinc-300 hover:text-white transition font-mono text-xs flex items-center gap-1.5 shrink-0"
+                      >
+                        {copiedInput ? (
+                          <>
+                            <Check className="w-3.5 h-3.5 text-emerald-400" />
+                            <span className="hidden sm:inline text-xs text-emerald-400 font-medium">Copied</span>
+                          </>
+                        ) : (
+                          <>
+                            <Link2 className="w-3.5 h-3.5" />
+                            <span className="hidden sm:inline text-xs">Copy Link</span>
+                          </>
+                        )}
                       </button>
                     )}
                   </div>
@@ -296,18 +374,32 @@ export default function HomePage() {
                 {activeTab === "create" ? (
                   <button
                     onClick={createRoom}
-                    disabled={loading}
+                    disabled={loading || Boolean(navigatingRoom)}
                     className="w-full sm:w-auto px-7 py-3 rounded-xl text-sm font-semibold bg-white text-zinc-950 hover:bg-zinc-200 transition shadow-lg flex items-center justify-center gap-2 disabled:opacity-50"
                   >
-                    {loading ? "Initializing..." : "Create & Launch →"}
+                    {loading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin text-zinc-950" />
+                        <span>{navigatingRoom ? "Entering Workspace..." : "Initializing..."}</span>
+                      </>
+                    ) : (
+                      "Create & Launch →"
+                    )}
                   </button>
                 ) : (
                   <button
                     onClick={joinRoom}
-                    disabled={loading}
+                    disabled={loading || Boolean(navigatingRoom)}
                     className="w-full sm:w-auto px-7 py-3 rounded-xl text-sm font-semibold bg-indigo-600 hover:bg-indigo-500 text-white transition shadow-lg shadow-indigo-600/20 flex items-center justify-center gap-2 disabled:opacity-50"
                   >
-                    {loading ? "Connecting..." : "Request to Join →"}
+                    {loading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin text-white" />
+                        <span>{navigatingRoom ? "Entering Room..." : "Connecting..."}</span>
+                      </>
+                    ) : (
+                      "Request to Join →"
+                    )}
                   </button>
                 )}
               </div>
@@ -333,7 +425,21 @@ export default function HomePage() {
                         Cached
                       </span>
                     </div>
-                    <p className="font-mono text-sm text-zinc-100 font-medium truncate">{lastRoom}</p>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="font-mono text-sm text-zinc-100 font-medium truncate">{lastRoom}</p>
+                      <button
+                        type="button"
+                        onClick={() => copyRoomLink(lastRoom, "recent")}
+                        title="Copy invite link"
+                        className="p-1 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] text-zinc-400 hover:text-white transition flex items-center justify-center shrink-0"
+                      >
+                        {copiedRecent ? (
+                          <Check className="w-3.5 h-3.5 text-emerald-400" />
+                        ) : (
+                          <Copy className="w-3.5 h-3.5" />
+                        )}
+                      </button>
+                    </div>
                   </div>
                 ) : (
                   <div className="mt-4 p-4 rounded-xl bg-zinc-950/40 border border-white/[0.04] text-center text-xs text-zinc-500">
@@ -343,13 +449,43 @@ export default function HomePage() {
               </div>
 
               {lastRoom && (
-                <button
-                  onClick={() => goToRoom(lastRoom)}
-                  className="w-full mt-4 py-2.5 rounded-xl text-xs font-medium bg-white/[0.08] hover:bg-white/[0.14] border border-white/[0.1] text-zinc-100 transition flex items-center justify-center gap-2"
-                >
-                  <span>Re-enter Room</span>
-                  <span className="font-mono text-[10px]">→</span>
-                </button>
+                <div className="mt-4 flex items-center gap-2">
+                  <button
+                    onClick={() => goToRoom(lastRoom)}
+                    disabled={Boolean(navigatingRoom)}
+                    className="flex-1 py-2.5 rounded-xl text-xs font-medium bg-white/[0.08] hover:bg-white/[0.14] border border-white/[0.1] text-zinc-100 transition flex items-center justify-center gap-2 disabled:opacity-60"
+                  >
+                    {navigatingRoom === lastRoom ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-400" />
+                        <span>Entering...</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>Re-enter Room</span>
+                        <span className="font-mono text-[10px]">→</span>
+                      </>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => copyRoomLink(lastRoom, "recent")}
+                    title="Copy invite link"
+                    className="px-3 py-2.5 rounded-xl text-xs font-medium bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] text-zinc-300 hover:text-white transition flex items-center justify-center gap-1.5 shrink-0"
+                  >
+                    {copiedRecent ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-emerald-400" />
+                        <span className="text-emerald-400 font-medium">Copied</span>
+                      </>
+                    ) : (
+                      <>
+                        <Link2 className="w-3.5 h-3.5" />
+                        <span>Copy Link</span>
+                      </>
+                    )}
+                  </button>
+                </div>
               )}
             </div>
 

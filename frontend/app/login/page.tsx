@@ -34,24 +34,36 @@ export default function LoginPage() {
         }
       );
 
-      let data;
+      let data: any;
+      const text = await res.text();
       try {
-        data = await res.text();
+        data = JSON.parse(text);
       } catch {
-        data = "Login failed";
+        data = text;
       }
 
       if (!res.ok) {
-        toast.error(data || "Invalid credentials", { id: loadingToast });
+        const errorMsg = typeof data === "string" ? data : (data?.error || data?.message || "Invalid credentials");
+        toast.error(errorMsg, { id: loadingToast });
         return;
       }
 
-      // Save token
-      localStorage.setItem("token", data);
+      // Save tokens
+      const accessToken = typeof data === "object" ? (data.accessToken || data.token) : data;
+      const refreshToken = typeof data === "object" ? data.refreshToken : null;
+
+      localStorage.setItem("token", accessToken);
+      if (refreshToken) {
+        localStorage.setItem("refreshToken", refreshToken);
+      }
+
       toast.success("Welcome back!", { id: loadingToast });
 
+      const searchParams = new URLSearchParams(window.location.search);
+      const redirectUrl = searchParams.get("redirect") || "/home";
+
       setTimeout(() => {
-        router.push("/home");
+        router.push(redirectUrl);
       }, 600);
 
     } catch (error) {
