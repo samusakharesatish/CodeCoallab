@@ -9,6 +9,16 @@
       "name": "jwt.expiration",
       "type": "java.lang.Long",
       "description": "JWT token expiration duration in milliseconds."
+    },
+    {
+      "name": "cors.allowed-origins",
+      "type": "java.lang.String",
+      "description": "Comma-separated list of allowed origins for CORS and WebSocket connections."
+    },
+    {
+      "name": "judge0.api.url",
+      "type": "java.lang.String",
+      "description": "Endpoint URL for the Judge0 code execution service."
     }
   ]
 }

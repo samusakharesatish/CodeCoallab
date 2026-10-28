@@ -6,6 +6,7 @@ import com.codecollab.auth.dto.LoginRequest;
 import com.codecollab.auth.dto.RegisterRequest;
 import com.codecollab.model.User;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -13,8 +14,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import java.util.Optional;
 
 @RestController
-@RequestMapping("/auth") // ✅ KEEP THIS
-@CrossOrigin("*")
+@RequestMapping("/auth")
 public class AuthController {
 
     private final UserRepository repo;
@@ -30,18 +30,35 @@ public class AuthController {
     @PostMapping("/register")
     public ResponseEntity<?> register(@RequestBody RegisterRequest req) {
 
-        if (repo.findByEmail(req.email).isPresent()) {
+        if (req == null || req.email == null || req.password == null || req.username == null) {
+            return ResponseEntity.badRequest().body("Username, email, and password are required");
+        }
+
+        String email = req.email.trim().toLowerCase();
+        if (!email.matches("^[A-Za-z0-9+_.-]+@(.+)$")) {
+            return ResponseEntity.badRequest().body("Invalid email format");
+        }
+
+        if (req.password.length() < 6) {
+            return ResponseEntity.badRequest().body("Password must be at least 6 characters long");
+        }
+
+        if (req.username.trim().length() < 3) {
+            return ResponseEntity.badRequest().body("Username must be at least 3 characters long");
+        }
+
+        if (repo.findByEmail(email).isPresent()) {
             return ResponseEntity.badRequest().body("Email already exists");
         }
 
         User user = new User();
-        user.setUsername(req.username);
-        user.setEmail(req.email);
+        user.setUsername(req.username.trim());
+        user.setEmail(email);
         user.setPassword(encoder.encode(req.password));
 
         repo.save(user);
 
-        return ResponseEntity.ok("User registered");
+        return ResponseEntity.ok("User registered successfully");
     }
 
     // ✅ LOGIN
@@ -49,23 +66,18 @@ public class AuthController {
     public ResponseEntity<?> login(@RequestBody LoginRequest req) {
 
         try {
-            System.out.println("👉 LOGIN START");
-
-            if (req.getEmail() == null || req.getPassword() == null) {
-                return ResponseEntity.badRequest().body("Email or password missing");
+            if (req == null || req.getEmail() == null || req.getPassword() == null) {
+                return ResponseEntity.badRequest().body("Email and password are required");
             }
 
-            Optional<User> optionalUser = repo.findByEmail(req.getEmail());
+            Optional<User> optionalUser = repo.findByEmail(req.getEmail().trim().toLowerCase());
 
-            if (optionalUser.isEmpty()) {
-                return ResponseEntity.status(404).body("User not found");
+            // Generic message to prevent user enumeration
+            if (optionalUser.isEmpty() || !encoder.matches(req.getPassword(), optionalUser.get().getPassword())) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid email or password");
             }
 
             User user = optionalUser.get();
-
-            if (!encoder.matches(req.getPassword(), user.getPassword())) {
-                return ResponseEntity.status(401).body("Invalid credentials");
-            }
 
             // ✅ Generate JWT
             String token = jwtUtil.generateToken(
@@ -73,13 +85,10 @@ public class AuthController {
                     user.getUsername()
             );
 
-            System.out.println("✅ LOGIN SUCCESS");
-
             return ResponseEntity.ok(token);
 
         } catch (Exception e) {
-            e.printStackTrace();
-            return ResponseEntity.status(500).body("Login failed: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Login failed");
         }
     }
 }
