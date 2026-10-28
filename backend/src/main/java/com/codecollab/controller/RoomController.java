@@ -8,6 +8,7 @@ import com.codecollab.repository.RoomRepository;
 import com.codecollab.service.RedisService;
 
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import org.springframework.messaging.handler.annotation.MessageMapping;
@@ -21,7 +22,6 @@ import java.util.*;
 
 @RestController
 @RequestMapping("/room")
-@CrossOrigin("*")
 public class RoomController {
 
     private final RoomRepository roomRepo;
@@ -43,7 +43,7 @@ public class RoomController {
     // ✅ CREATE ROOM
     // =========================
     @PostMapping("/create")
-    public ResponseEntity<?> createRoom(@RequestBody(required = false) Room req) {
+    public ResponseEntity<?> createRoom(@RequestBody(required = false) Room req, Authentication auth) {
 
         String roomId;
 
@@ -64,12 +64,19 @@ public class RoomController {
         room.setCreatedAt(new Date());
         room.setUpdatedAt(new Date());
 
-        if (req != null && req.getHostId() != null) {
-            room.setHostId(req.getHostId());
-            if (req.getHostUsername() != null && !req.getHostUsername().isBlank()) {
+        String hostId = null;
+        if (auth != null && auth.isAuthenticated() && !auth.getName().equals("anonymousUser")) {
+            hostId = auth.getName();
+        } else if (req != null && req.getHostId() != null) {
+            hostId = req.getHostId();
+        }
+
+        if (hostId != null) {
+            room.setHostId(hostId);
+            if (req != null && req.getHostUsername() != null && !req.getHostUsername().isBlank()) {
                 room.setHostUsername(req.getHostUsername());
             } else {
-                userRepo.findByEmail(req.getHostId()).ifPresent(u -> room.setHostUsername(u.getUsername()));
+                userRepo.findByEmail(hostId).ifPresent(u -> room.setHostUsername(u.getUsername()));
             }
         }
 
