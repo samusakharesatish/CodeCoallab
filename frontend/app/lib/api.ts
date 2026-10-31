@@ -12,17 +12,16 @@ function addRefreshSubscriber(callback: (token: string | null) => void) {
   refreshSubscribers.push(callback);
 }
 
+export const API_URL = process.env.NEXT_PUBLIC_API_URL || "";
+
 /**
  * Enhanced fetch wrapper with automatic silent token refresh.
- * If any authenticated request fails with 401 or 403, it automatically
- * attempts to refresh the access token using the stored refresh token,
- * updates localStorage, and transparently retries the original request.
+ * Uses NEXT_PUBLIC_API_URL strictly from environment (.env.local in dev).
  */
 export async function apiFetch(input: string, init: RequestInit = {}): Promise<Response> {
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
   const url = input.startsWith("http")
     ? input
-    : `${apiUrl}${input.startsWith("/") ? "" : "/"}${input}`;
+    : `${API_URL}${input.startsWith("/") ? "" : "/"}${input}`;
 
   const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
 
@@ -51,7 +50,7 @@ export async function apiFetch(input: string, init: RequestInit = {}): Promise<R
       isRefreshing = true;
 
       try {
-        const refreshRes = await fetch(`${apiUrl}/auth/refresh`, {
+        const refreshRes = await fetch(`${API_URL}/auth/refresh`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ refreshToken }),
