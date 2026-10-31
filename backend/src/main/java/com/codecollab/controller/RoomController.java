@@ -39,6 +39,18 @@ public class RoomController {
         this.redisService = redisService;
     }
 
+    private String generateMeetStyleId() {
+        String chars = "abcdefghijklmnopqrstuvwxyz";
+        java.security.SecureRandom random = new java.security.SecureRandom();
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < 3; i++) sb.append(chars.charAt(random.nextInt(chars.length())));
+        sb.append("-");
+        for (int i = 0; i < 4; i++) sb.append(chars.charAt(random.nextInt(chars.length())));
+        sb.append("-");
+        for (int i = 0; i < 3; i++) sb.append(chars.charAt(random.nextInt(chars.length())));
+        return sb.toString();
+    }
+
     // =========================
     // ✅ CREATE ROOM
     // =========================
@@ -54,7 +66,7 @@ public class RoomController {
                 return ResponseEntity.badRequest().body("Room already exists");
             }
         } else {
-            roomId = UUID.randomUUID().toString().substring(0, 6);
+            roomId = generateMeetStyleId();
         }
 
         Room room = new Room();

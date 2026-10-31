@@ -3,11 +3,13 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import toast from "react-hot-toast";
+import { Loader2 } from "lucide-react";
 
 import ChatPanel from "./ChatPanel";
 import EditorPanel from "./EditorPanel";
 import WhiteboardCanvas from "./WhiteboardCanvas";
 import { connectSocket, sendView } from "../../lib/socket";
+import { apiFetch } from "../../lib/api";
 
 /* ================= TYPES ================= */
 
@@ -68,6 +70,7 @@ export default function RoomPage() {
   // 🔥 NEW (approval system)
   const [isApproved, setIsApproved] = useState(false);
   const [isHost, setIsHost] = useState(false);
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [requests, setRequests] = useState<JoinRequest[]>([]);
 
   const isRemote = useRef(false);
@@ -100,6 +103,14 @@ export default function RoomPage() {
 
     try {
       const payload = JSON.parse(atob(token.split(".")[1]));
+      if (payload.exp && payload.exp * 1000 < Date.now()) {
+        const refreshToken = localStorage.getItem("refreshToken");
+        if (!refreshToken) {
+          localStorage.removeItem("token");
+          window.location.href = "/login";
+          return;
+        }
+      }
       setUserId(payload.sub);
       setUsername(payload.username || payload.sub);
     } catch {
@@ -114,31 +125,40 @@ export default function RoomPage() {
 
     const checkHost = async () => {
       try {
-        const token = localStorage.getItem("token");
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
-        const res = await fetch(`${apiUrl}/room/${roomIdStr}`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-        if (!res.ok) return;
+        const res = await apiFetch(`/room/${roomIdStr}`);
+        if (!res.ok) {
+          setIsCheckingAuth(false);
+          return;
+        }
         const data = await res.json();
 
         if (String(data.hostId) === String(userId)) {
           setIsHost(true);
           setIsApproved(true);
         } else {
-          await fetch(`${apiUrl}/join/request`, {
+          // If guest, check if already approved
+          try {
+            const statusRes = await apiFetch(`/join/status/${roomIdStr}/${userId}`);
+            if (statusRes.ok) {
+              const statusData = await statusRes.json();
+              if (statusData?.status === "APPROVED") {
+                setIsApproved(true);
+              }
+            }
+          } catch {}
+
+          await apiFetch(`/join/request`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              Authorization: `Bearer ${token}`,
             },
             body: JSON.stringify({ roomId: roomIdStr, userId, username }),
           });
         }
       } catch (err) {
         console.warn("Check host network error:", err);
+      } finally {
+        setIsCheckingAuth(false);
       }
     };
 
@@ -151,16 +171,7 @@ export default function RoomPage() {
 
     const interval = setInterval(async () => {
       try {
-        const token = localStorage.getItem("token");
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
-        const res = await fetch(
-          `${apiUrl}/join/status/${roomIdStr}/${userId}`,
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          }
-        );
+        const res = await apiFetch(`/join/status/${roomIdStr}/${userId}`);
         if (!res.ok) return;
         const data = await res.json();
 
@@ -183,16 +194,7 @@ export default function RoomPage() {
   /* ================= HOST REQUEST LIST ================= */
   const fetchRequests = async () => {
     try {
-      const token = localStorage.getItem("token");
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
-      const res = await fetch(
-        `${apiUrl}/join/pending/${roomIdStr}`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
+      const res = await apiFetch(`/join/pending/${roomIdStr}`);
       if (!res.ok) return;
       const data: JoinRequest[] = await res.json();
       setRequests(data);
@@ -210,13 +212,10 @@ export default function RoomPage() {
 
   const approveUser = async (r: JoinRequest) => {
     try {
-      const token = localStorage.getItem("token");
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
-      await fetch(`${apiUrl}/join/approve`, {
+      await apiFetch(`/join/approve`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify(r),
       });
@@ -228,13 +227,10 @@ export default function RoomPage() {
 
   const rejectUser = async (r: JoinRequest) => {
     try {
-      const token = localStorage.getItem("token");
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
-      await fetch(`${apiUrl}/join/reject`, {
+      await apiFetch(`/join/reject`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify(r),
       });
@@ -318,16 +314,7 @@ export default function RoomPage() {
 
     const fetchRoom = async () => {
       try {
-        const token = localStorage.getItem("token");
-        const res = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/room/${roomIdStr}`,
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          }
-        );
-
+        const res = await apiFetch(`/room/${roomIdStr}`);
         if (!res.ok) return;
 
         let data: any;
@@ -352,7 +339,32 @@ export default function RoomPage() {
     fetchRoom();
   }, [roomIdStr]);
 
-  if (!roomIdStr || !userId) return null;
+  // 1. Loading State while authenticating and checking host/authorization
+  if (isCheckingAuth || !roomIdStr || !userId) {
+    return (
+      <div className="min-h-screen bg-[#09090b] text-zinc-100 flex flex-col items-center justify-center p-6 relative overflow-hidden select-none">
+        <div className="absolute w-[500px] h-[500px] bg-indigo-600/10 rounded-full blur-[150px] pointer-events-none" />
+        <div className="relative z-10 flex flex-col items-center max-w-sm text-center space-y-5">
+          <div className="relative flex items-center justify-center">
+            <div className="w-16 h-16 rounded-2xl bg-zinc-900/90 border border-white/10 flex items-center justify-center shadow-2xl backdrop-blur-xl">
+              <span className="font-mono text-xl font-bold text-white">&lt;/&gt;</span>
+            </div>
+            <div className="absolute -inset-1 rounded-2xl bg-gradient-to-r from-indigo-500 to-purple-600 opacity-40 blur-md animate-pulse" />
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-center gap-2">
+              <Loader2 className="w-4 h-4 text-indigo-400 animate-spin" />
+              <h2 className="text-base font-semibold text-white tracking-tight">Entering Workspace</h2>
+            </div>
+            <p className="text-xs text-zinc-400">
+              Connecting to room <span className="font-mono text-indigo-300 font-medium">{roomIdStr}</span>...
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (!isApproved) {
     return (

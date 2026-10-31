@@ -363,4 +363,62 @@ public class RedisService {
             return false;
         }
     }
+
+    // ==========================================
+    // 🔐 6. EMAIL OTP METHODS
+    // ==========================================
+
+    public void saveOtp(String email, String otp) {
+        try {
+            if (email == null || otp == null) return;
+            String key = "otp:" + email.trim().toLowerCase();
+            ensureStringType(key);
+            redisTemplate.opsForValue().set(key, otp, Duration.ofMinutes(5));
+        } catch (Exception e) {
+            System.err.println("⚠️ Redis error saving OTP: " + e.getMessage());
+        }
+    }
+
+    public String getOtp(String email) {
+        try {
+            if (email == null) return null;
+            String key = "otp:" + email.trim().toLowerCase();
+            return redisTemplate.opsForValue().get(key);
+        } catch (Exception e) {
+            System.err.println("⚠️ Redis error getting OTP: " + e.getMessage());
+            return null;
+        }
+    }
+
+    public void deleteOtp(String email) {
+        try {
+            if (email == null) return;
+            String key = "otp:" + email.trim().toLowerCase();
+            redisTemplate.delete(key);
+        } catch (Exception e) {
+            System.err.println("⚠️ Redis error deleting OTP: " + e.getMessage());
+        }
+    }
+
+    public boolean isOtpCooldownActive(String email) {
+        try {
+            if (email == null) return false;
+            String key = "rate:otp:" + email.trim().toLowerCase();
+            return Boolean.TRUE.equals(redisTemplate.hasKey(key));
+        } catch (Exception e) {
+            System.err.println("⚠️ Redis error checking OTP cooldown: " + e.getMessage());
+            return false;
+        }
+    }
+
+    public void setOtpCooldown(String email) {
+        try {
+            if (email == null) return;
+            String key = "rate:otp:" + email.trim().toLowerCase();
+            ensureStringType(key);
+            redisTemplate.opsForValue().set(key, "1", Duration.ofSeconds(60));
+        } catch (Exception e) {
+            System.err.println("⚠️ Redis error setting OTP cooldown: " + e.getMessage());
+        }
+    }
 }

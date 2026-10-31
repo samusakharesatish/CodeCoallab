@@ -16,8 +16,11 @@ public class JwtUtil {
     @Value("${jwt.secret}")
     private String secret;
 
-    @Value("${jwt.expiration:86400000}")
+    @Value("${jwt.expiration:3600000}")
     private long expirationMs;
+
+    @Value("${jwt.refresh-expiration:604800000}")
+    private long refreshExpirationMs;
 
     private Key key;
 
@@ -26,15 +29,33 @@ public class JwtUtil {
         this.key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
     }
 
-    // ✅ Generate JWT
-    public String generateToken(String email, String username) {
+    // ✅ Generate Access Token
+    public String generateAccessToken(String email, String username) {
         return Jwts.builder()
                 .setSubject(email)
                 .claim("username", username)
+                .claim("type", "access")
                 .setIssuedAt(new Date())
                 .setExpiration(new Date(System.currentTimeMillis() + expirationMs))
                 .signWith(key, SignatureAlgorithm.HS256)
                 .compact();
+    }
+
+    // ✅ Generate Refresh Token
+    public String generateRefreshToken(String email, String username) {
+        return Jwts.builder()
+                .setSubject(email)
+                .claim("username", username)
+                .claim("type", "refresh")
+                .setIssuedAt(new Date())
+                .setExpiration(new Date(System.currentTimeMillis() + refreshExpirationMs))
+                .signWith(key, SignatureAlgorithm.HS256)
+                .compact();
+    }
+
+    // ✅ Legacy / Default token generation
+    public String generateToken(String email, String username) {
+        return generateAccessToken(email, username);
     }
 
     // ✅ Validate token signature and expiration
@@ -50,6 +71,20 @@ public class JwtUtil {
         }
     }
 
+    // ✅ Validate Refresh Token specifically
+    public boolean validateRefreshToken(String token) {
+        try {
+            Claims claims = Jwts.parserBuilder()
+                    .setSigningKey(key)
+                    .build()
+                    .parseClaimsJws(token)
+                    .getBody();
+            return "refresh".equals(claims.get("type", String.class));
+        } catch (JwtException | IllegalArgumentException e) {
+            return false;
+        }
+    }
+
     // ✅ Extract all claims safely
     public Claims extractClaims(String token) {
         return Jwts.parserBuilder()
@@ -57,6 +92,15 @@ public class JwtUtil {
                 .build()
                 .parseClaimsJws(token)
                 .getBody();
+    }
+
+    // ✅ Extract token type ("access" or "refresh")
+    public String extractTokenType(String token) {
+        try {
+            return extractClaims(token).get("type", String.class);
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     // ✅ Extract email (subject)

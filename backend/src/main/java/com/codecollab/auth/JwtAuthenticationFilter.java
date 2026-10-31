@@ -40,6 +40,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         final String jwt = authHeader.substring(7);
 
         if (jwtUtil.validateToken(jwt)) {
+            // Reject if someone tries to use a refresh token for general API calls
+            String tokenType = jwtUtil.extractTokenType(jwt);
+            if ("refresh".equalsIgnoreCase(tokenType)) {
+                filterChain.doFilter(request, response);
+                return;
+            }
+
             String email = jwtUtil.extractEmail(jwt);
 
             if (email != null && SecurityContextHolder.getContext().getAuthentication() == null) {
