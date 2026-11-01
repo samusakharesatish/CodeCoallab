@@ -1,7 +1,10 @@
 package com.codecollab.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.mail.internet.MimeMessage;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
 
 import java.net.URI;
@@ -15,23 +18,44 @@ import java.util.Map;
 @Service
 public class EmailService {
 
+    @Value("${spring.mail.username:${EMAIL_USER:satishsamu26@gmail.com}}")
+    private String mailUser;
+
+    @Value("${spring.mail.password:${EMAIL_API_KEY:}}")
+    private String emailApiKey;
+
     @Value("${resend.api.key:${RESEND_API_KEY:}}")
     private String resendApiKey;
 
     @Value("${resend.from.email:${RESEND_FROM_EMAIL:CodeCollab <onboarding@resend.dev>}}")
     private String fromEmail;
 
+    private final JavaMailSender mailSender;
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient;
 
-    public EmailService(ObjectMapper objectMapper) {
+    public EmailService(JavaMailSender mailSender, ObjectMapper objectMapper) {
+        this.mailSender = mailSender;
         this.objectMapper = objectMapper;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(10))
                 .build();
     }
 
-    private String resolveApiKey() {
+    private String resolveEmailApiKey() {
+        if (emailApiKey != null && !emailApiKey.trim().isBlank()) {
+            return emailApiKey.trim();
+        }
+        String key = System.getenv("EMAIL_API_KEY");
+        if (key != null && !key.trim().isBlank()) return key.trim();
+
+        key = System.getProperty("EMAIL_API_KEY");
+        if (key != null && !key.trim().isBlank()) return key.trim();
+
+        return "";
+    }
+
+    private String resolveResendApiKey() {
         if (resendApiKey != null && !resendApiKey.trim().isBlank()) {
             return resendApiKey.trim();
         }
@@ -45,8 +69,11 @@ public class EmailService {
     }
 
     public boolean sendOtpEmail(String toEmail, String otp) {
-        String apiKey = resolveApiKey();
-        boolean isResendConfigured = !apiKey.isBlank();
+        String googleApiKey = resolveEmailApiKey();
+        boolean isGmailConfigured = !googleApiKey.isBlank();
+
+        String resendKey = resolveResendApiKey();
+        boolean isResendConfigured = !resendKey.isBlank();
 
         // 1. Terminal Output: ALWAYS display the OTP clearly in terminal so local dev / testing is seamless
         System.out.println("\n" + "=".repeat(62));
@@ -54,53 +81,83 @@ public class EmailService {
         System.out.println(" 📧 Recipient: " + toEmail);
         System.out.println(" 🔑 OTP Code:  " + otp);
         System.out.println(" ⏱️ Valid for:  5 Minutes");
-        if (isResendConfigured) {
-            System.out.println(" 📤 Delivery:  Sending real email via Resend API...");
+        if (isGmailConfigured) {
+            System.out.println(" 📤 Delivery:  Sending email via Gmail SMTP (" + mailUser + ")...");
+        } else if (isResendConfigured) {
+            System.out.println(" 📤 Delivery:  Sending email via Resend API...");
         } else {
-            System.out.println(" ℹ️ Delivery:  Resend API key not set (Local Terminal Mode)");
+            System.out.println(" ℹ️ Delivery:  No email provider configured (Local Terminal Mode)");
         }
         System.out.println("=".repeat(62) + "\n");
 
-        if (!isResendConfigured) {
+        // If neither is configured, rely purely on local terminal
+        if (!isGmailConfigured && !isResendConfigured) {
             return true;
         }
 
-        // 2. Dispatch real email via Resend
-        try {
-            String htmlBody = buildOtpHtmlTemplate(otp);
+        // 2. Try Gmail SMTP first if EMAIL_API_KEY is configured
+        if (isGmailConfigured) {
+            try {
+                MimeMessage message = mailSender.createMimeMessage();
+                MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
 
-            Map<String, Object> payload = Map.of(
-                    "from", fromEmail,
-                    "to", List.of(toEmail),
-                    "subject", "Your CodeCollab Verification Code: " + otp,
-                    "html", htmlBody
-            );
+                helper.setFrom("CodeCollab <" + mailUser + ">");
+                helper.setTo(toEmail);
+                helper.setSubject("Your CodeCollab Verification Code: " + otp);
+                helper.setText(buildOtpHtmlTemplate(otp), true);
 
-            String json = objectMapper.writeValueAsString(payload);
-
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create("https://api.resend.com/emails"))
-                    .header("Authorization", "Bearer " + apiKey)
-                    .header("Content-Type", "application/json")
-                    .timeout(Duration.ofSeconds(10))
-                    .POST(HttpRequest.BodyPublishers.ofString(json))
-                    .build();
-
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-
-            if (response.statusCode() >= 200 && response.statusCode() < 300) {
-                System.out.println("✅ [Resend] Email successfully delivered to " + toEmail);
+                mailSender.send(message);
+                System.out.println("✅ [Gmail SMTP] Email successfully delivered to " + toEmail);
                 return true;
-            } else {
-                System.err.println("⚠️ [Resend] Failed to send email (Status " + response.statusCode() + "): " + response.body());
+            } catch (Exception e) {
+                System.err.println("⚠️ [Gmail SMTP Error] " + e.getMessage());
+                System.out.println("💡 [Dev Info] You can still use the OTP printed above in the terminal to log in.");
+                if (!isResendConfigured) {
+                    return false;
+                }
+            }
+        }
+
+        // 3. Fallback to Resend if Gmail SMTP failed or wasn't configured
+        if (isResendConfigured) {
+            try {
+                String htmlBody = buildOtpHtmlTemplate(otp);
+
+                Map<String, Object> payload = Map.of(
+                        "from", fromEmail,
+                        "to", List.of(toEmail),
+                        "subject", "Your CodeCollab Verification Code: " + otp,
+                        "html", htmlBody
+                );
+
+                String json = objectMapper.writeValueAsString(payload);
+
+                HttpRequest request = HttpRequest.newBuilder()
+                        .uri(URI.create("https://api.resend.com/emails"))
+                        .header("Authorization", "Bearer " + resendKey)
+                        .header("Content-Type", "application/json")
+                        .timeout(Duration.ofSeconds(10))
+                        .POST(HttpRequest.BodyPublishers.ofString(json))
+                        .build();
+
+                HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+
+                if (response.statusCode() >= 200 && response.statusCode() < 300) {
+                    System.out.println("✅ [Resend] Email successfully delivered to " + toEmail);
+                    return true;
+                } else {
+                    System.err.println("⚠️ [Resend] Failed to send email (Status " + response.statusCode() + "): " + response.body());
+                    System.out.println("💡 [Dev Info] You can still use the OTP printed above in the terminal to log in.");
+                    return false;
+                }
+            } catch (Exception e) {
+                System.err.println("⚠️ [Resend Error] " + e.getMessage());
                 System.out.println("💡 [Dev Info] You can still use the OTP printed above in the terminal to log in.");
                 return false;
             }
-        } catch (Exception e) {
-            System.err.println("⚠️ [Resend Error] " + e.getMessage());
-            System.out.println("💡 [Dev Info] You can still use the OTP printed above in the terminal to log in.");
-            return false;
         }
+
+        return false;
     }
 
     private String buildOtpHtmlTemplate(String otp) {

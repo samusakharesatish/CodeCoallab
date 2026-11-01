@@ -3,22 +3,37 @@
     {
       "name": "jwt.secret",
       "type": "java.lang.String",
-      "description": "HMAC-SHA256 secret key for signing and validating JWT tokens."
+      "description": "Secret key used to sign and verify JWT tokens."
     },
     {
       "name": "jwt.expiration",
       "type": "java.lang.Long",
-      "description": "JWT token expiration duration in milliseconds."
+      "description": "Access token validity in milliseconds."
+    },
+    {
+      "name": "jwt.refresh-expiration",
+      "type": "java.lang.Long",
+      "description": "Refresh token validity in milliseconds."
     },
     {
       "name": "cors.allowed-origins",
       "type": "java.lang.String",
-      "description": "Comma-separated list of allowed origins for CORS and WebSocket connections."
+      "description": "Comma-separated list of allowed CORS origins."
     },
     {
       "name": "judge0.api.url",
       "type": "java.lang.String",
-      "description": "Endpoint URL for the Judge0 code execution service."
+      "description": "Endpoint URL for the Judge0 code execution API."
+    },
+    {
+      "name": "resend.api.key",
+      "type": "java.lang.String",
+      "description": "API Key for Resend email service."
+    },
+    {
+      "name": "resend.from.email",
+      "type": "java.lang.String",
+      "description": "From email address for Resend email service."
     }
   ]
 }
